@@ -3,12 +3,8 @@
    Активируется ТОЛЬКО если в assets/ лежат локальные файлы:
      assets/hero.jpg | hero.png  — сцена с шаром
      assets/cosmos.jpg | cosmos.png — космос
-   Без них сайт работает на основной 3D-сцене (three-scene.js).
-
-   Что делает с фото: туманность в шаре дышит/вращается, звёзды мерцают,
-   свеча пульсирует, туман ползёт; скролл — наезд к шару (origin = центр
-   шара в пикселях, cover-математика), тоннель-затемнение, кромка стекла,
-   затем круговая маска раскрывает космос. */
+   Без них сайт работает на основной 3D-сцене (three-scene.js),
+   которая проявляется через класс mode-3d на <html>. */
 (function () {
   'use strict';
   var html = document.documentElement;
@@ -320,6 +316,10 @@
     sizeAll();
     if (window.console) console.info('[Astra] hero-фото OK:', url, '| шар px:', Math.round(geo.bx) + ',' + Math.round(geo.by), 'R=' + Math.round(geo.R));
     if (REDUCED) { reducedStatic(); } else { startLoop(); }
+  }, function () {
+    /* локальных фото нет → основная 3D-сцена проявляется */
+    html.classList.add('mode-3d');
+    if (window.console) console.info('[Astra] фото в assets/ не найдены — режим 3D');
   });
 
   loadFirst(COSMOS_URLS, function (url, im) {

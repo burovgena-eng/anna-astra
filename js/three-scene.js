@@ -1,19 +1,27 @@
-/* Anna Astra — основная 3D-сцена (three.js r128).
+/* Anna Astra — основная 3D-сцена (three.js r128). СТАРТУЕТ МГНОВЕННО.
 
-   Комната гаданий → стеклянный шар с живым космосом внутри → пролёт сквозь
-   стекло → космос становится фоном страницы. Прогрессом управляет ScrollTrigger
-   через window.__astraScroll.hero (0..1).
+   Комната гаданий → шар с живым космосом → пролёт сквозь стекло → космос
+   как фон страницы. Прогресс: window.__astraScroll.hero (ScrollTrigger).
 
-   Объёмные объекты: карты с толщиной и золотыми торцами (рубашка с орнаментом),
-   огранённые руны-камни, контактные тени, блик на стекле.
+   Режимы: если в assets/ появились hero.mp4 (видео) или hero.jpg|png (фото),
+   они перехватывают сцену (классы has-hero-video / has-photo-hero на <html>),
+   а этот цикл сам останавливается. Пока файлов нет — canvas проявляется
+   через класс mode-3d (плавно, без чёрной паузы и без вспышек).
 
-   АПГРЕЙД-режимы включаются автоматически, если в assets/ появятся файлы:
-     hero.mp4 — видео-режим (main.js), hero.jpg|png — «живая фотография»
-     (living-scene.js). Они отключают эту сцену классами на <html>. */
+   Объёмные объекты: карты с толщиной и золотыми торцами, огранённые руны,
+   контактные тени, блик на стекле. */
 (function () {
   'use strict';
   var canvas = document.getElementById('sky');
   if (!canvas || !window.THREE) { if (canvas) canvas.style.display = 'none'; return; }
+
+  /* стили проявления сцены (один раз) */
+  if (!document.getElementById('astra-mode-style')) {
+    var st = document.createElement('style');
+    st.id = 'astra-mode-style';
+    st.textContent = '#sky{opacity:0;transition:opacity .8s ease}html.mode-3d #sky{opacity:1}';
+    document.head.appendChild(st);
+  }
 
   var REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var FINE = window.matchMedia('(pointer: fine)').matches;
@@ -228,7 +236,6 @@
     x.quadraticCurveTo(S / 2, S - 8, 44, S - 24);
     x.quadraticCurveTo(12, S / 2, 46, 20);
     x.closePath(); x.fill();
-    /* гравировка: тёмная канавка + светлая кромка */
     strokes.forEach(function (st) {
       [[2, 3, 'rgba(10,8,16,.8)', 15], [0, 0, '#E6D6AC', 9]].forEach(function (cfg) {
         x.strokeStyle = cfg[2];
@@ -267,7 +274,6 @@
     roomGroup = new THREE.Group();
     scene.add(roomGroup);
 
-    /* Фон комнаты (слот под assets/hero-room.jpg для фото-фона) */
     var backdropProc = new THREE.Mesh(
       new THREE.PlaneGeometry(17, 9.6),
       new THREE.MeshBasicMaterial({ map: makeBackdropTexture(), transparent: true, opacity: 1 })
@@ -292,7 +298,6 @@
       backdropProc.visible = false;
     }, undefined, function () {});
 
-    /* Стол */
     var table = new THREE.Mesh(
       new THREE.CylinderGeometry(4.4, 4.6, 0.28, 48),
       new THREE.MeshStandardMaterial({ color: 0x191322, roughness: 0.9, metalness: 0.05, transparent: true })
@@ -308,7 +313,6 @@
     sheen.position.y = -0.849;
     roomGroup.add(sheen);
 
-    /* Тени */
     var shadowTex = radialTexture('rgba(0,0,0,0.6)', 'rgba(0,0,0,0)', 256);
     function addShadow(x, z, s, op) {
       var m = new THREE.Mesh(
@@ -318,11 +322,9 @@
       m.rotation.x = -Math.PI / 2;
       m.position.set(x, -0.848, z);
       roomGroup.add(m);
-      return m;
     }
     addShadow(0, 0, 3.4, 0.55);
 
-    /* Подставка + шар */
     var stand = new THREE.Mesh(
       new THREE.CylinderGeometry(0.34, 0.46, 0.14, 24),
       new THREE.MeshStandardMaterial({ color: 0x6b5631, metalness: 0.85, roughness: 0.35, transparent: true })
@@ -360,37 +362,33 @@
     roomGroup.add(ballGlow);
     glows.push({ sprite: ballGlow, base: 3.4, op: 0.3, ph: 1.3, flicker: 0 });
 
-    /* блик на стекле (специфика стекла) */
     var hlTex = radialTexture('rgba(255,246,228,.9)', 'rgba(255,246,228,0)', 128);
     var hl = new THREE.Sprite(new THREE.SpriteMaterial({ map: hlTex, transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending }));
     hl.scale.set(0.75, 0.75, 1);
     hl.position.set(-0.46, 0.76, 0.74);
     scene.add(hl);
 
-    /* Карты — объёмные, с толщиной и золотыми торцами */
+    /* Карты — объёмные */
     var cardSideMat = new THREE.MeshStandardMaterial({ color: 0x8a6d3a, roughness: 0.5, metalness: 0.35, transparent: true });
     var cardBackMat = new THREE.MeshStandardMaterial({ map: makeCardBackTexture(), roughness: 0.55, metalness: 0.2, transparent: true });
     var cardGeoBox = new THREE.BoxGeometry(0.78, 0.035, 1.3);
     function faceMat(i) {
       return new THREE.MeshStandardMaterial({ map: makeCardFaceTexture(i), roughness: 0.55, metalness: 0.2, transparent: true });
     }
-    /* две лежачих рубашкой вверх слева */
-    [[-1.75, 0.55, 0.5, 0], [-1.6, 0.66, 0.66, 0.045]].forEach(function (d) {
+    [[-1.75, 0.55, 0.5], [-1.6, 0.66, 0.66, 0.045]].forEach(function (d) {
       var m = new THREE.Mesh(cardGeoBox, [cardSideMat, cardSideMat, cardSideMat, cardSideMat, cardBackMat, faceMat(0)]);
       m.rotation.x = -Math.PI / 2;
       m.rotation.z = d[2];
-      m.position.set(d[0], -0.8325 + d[3], d[1]);
+      m.position.set(d[0], -0.8325 + (d[3] || 0), d[1]);
       roomGroup.add(m);
       addShadow(d[0], d[1], 1.3, 0.4);
     });
-    /* лежачая справа */
     var rFlat = new THREE.Mesh(cardGeoBox, [cardSideMat, cardSideMat, cardSideMat, cardSideMat, cardBackMat, faceMat(2)]);
     rFlat.rotation.x = -Math.PI / 2;
     rFlat.rotation.z = -0.35;
     rFlat.position.set(1.7, -0.8325, 0.8);
     roomGroup.add(rFlat);
     addShadow(1.7, 0.8, 1.3, 0.4);
-    /* прислонённая с солнцем */
     var lean = new THREE.Mesh(cardGeoBox, [cardSideMat, cardSideMat, cardSideMat, cardSideMat, faceMat(1), cardBackMat]);
     lean.position.set(1.02, -0.24, 0.22);
     lean.rotation.set(-0.32, -0.5, 0.06);
@@ -437,7 +435,6 @@
       glows.push({ sprite: s, base: d[3], op: 0.5, ph: i * 2.6, flicker: 1 });
     });
 
-    /* Сбор материалов для fade комнаты */
     roomGroup.traverse(function (o) {
       if (o.isMesh && o.material && !o.userData.skipFade && o !== backdropImg) {
         var mats = Array.isArray(o.material) ? o.material : [o.material];
@@ -557,20 +554,19 @@
       renderer.render(scene, camera);
       window.addEventListener('resize', function () { applyLayout(); renderer.render(scene, camera); });
     } else {
-      /* даём шанс assets/hero.mp4|jpg загрузиться — если есть, фото/видео режим перехватит */
-      setTimeout(function () {
-        if (sceneSuperseded()) return;
-        try {
-          init();
-          animate();
-        } catch (err) {
-          canvas.style.display = 'none';
-          if (window.console) console.warn('[Astra] 3D-сцена недоступна:', err);
-        }
-      }, 2400);
+      init();
+      animate();
     }
   } catch (err) {
     canvas.style.display = 'none';
-    if (window.console) console.warn('[Anna Astra] 3D-сцена недоступна:', err);
+    if (window.console) console.warn('[Astra] 3D-сцена недоступна:', err);
   }
+
+  /* страховка: если фото/видео так и не определились — проявляем 3D */
+  setTimeout(function () {
+    if (!document.documentElement.classList.contains('has-photo-hero') &&
+        !document.documentElement.classList.contains('has-hero-video')) {
+      document.documentElement.classList.add('mode-3d');
+    }
+  }, 3000);
 })();

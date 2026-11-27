@@ -90,7 +90,10 @@
       html.classList.add('has-hero-video');
       heroVideo.play().catch(function () {});
     }, { once: true });
-    heroVideo.addEventListener('error', function () { heroVideoOK = false; }, { once: true });
+    heroVideo.addEventListener('error', function () {
+      heroVideoOK = false;
+      html.classList.add('mode-3d');
+    }, { once: true });
     heroVideo.src = 'assets/hero.mp4';
     heroVideo.load();
   }
@@ -104,7 +107,6 @@
     video.load();
   }
 
-  /* Точка шара для видео-режима: cover-математика для источника 16:9 */
   function videoBallPoint() {
     var b = window.__astraBall;
     if (b) return { x: b.cx, y: b.cy };
@@ -142,7 +144,7 @@
     }
   }
 
-  /* ---------- Pinned-погружение: скролл управляет сценой ---------- */
+  /* ---------- Pinned-погружение ---------- */
   var heroUI = qs('.hero-ui');
   var hint = qs('.scroll-hint');
   var dim = qs('.page-dim');
@@ -167,7 +169,6 @@
       }
     });
 
-    /* reveal секций — только opacity/translate, без блюра */
     qsa('[data-reveal]').forEach(function (el) {
       gsap.fromTo(el, { opacity: 0, y: 30 }, {
         opacity: 1, y: 0, duration: 0.9, ease: 'power3.out',
