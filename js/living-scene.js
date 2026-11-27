@@ -1,30 +1,23 @@
-/* Anna Astra — «живые фото»: анимация сгенерированных изображений.
+/* Anna Astra — режим «живой фотографии» (ОПЦИОНАЛЬНЫЙ апгрейд).
 
-   Геометрия: позиция шара считается в ПИКСЕЛЯХ ОКНА через cover-математику —
-   наезд, маска и эффекты всегда точно на шаре при любом окне.
+   Активируется ТОЛЬКО если в assets/ лежат локальные файлы:
+     assets/hero.jpg | hero.png  — сцена с шаром
+     assets/cosmos.jpg | cosmos.png — космос
+   Без них сайт работает на основной 3D-сцене (three-scene.js).
 
-   Погружение: при скролле мир вне шара гаснет (тоннель), стеклянная кромка
-   загорается, туманность внутри ярчеет — затем маска раскрывает космос.
-
-   Приоритет источников: assets/hero.jpg|png и assets/cosmos.jpg|png,
-   затем временные CDN-ссылки. Если есть assets/hero.mp4 — видео-режим.
-   3D стартует только если фото не загрузилось за 2.4 с.
-
-   Диагностика: откройте консоль (F12) — строки с префиксом [Astra]
-   показывают активный режим, источник картинки и координаты шара.
-
-   НАСТРОЙКА ПОД КАДР: константы BALL и CANDLE ниже. */
+   Что делает с фото: туманность в шаре дышит/вращается, звёзды мерцают,
+   свеча пульсирует, туман ползёт; скролл — наезд к шару (origin = центр
+   шара в пикселях, cover-математика), тоннель-затемнение, кромка стекла,
+   затем круговая маска раскрывает космос. */
 (function () {
   'use strict';
   var html = document.documentElement;
   var REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var FINE = window.matchMedia('(pointer: fine)').matches;
 
-  /* страница всегда стартует сверху — иначе можно попасть в середину pin-сцены */
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
   window.scrollTo(0, 0);
 
-  /* фолбэк высоты hero для браузеров без svh */
   var heroSec = document.getElementById('hero');
   if (heroSec) {
     heroSec.style.height = '100vh';
@@ -40,20 +33,11 @@
     return x * x * (3 - 2 * x);
   }
 
-  /* ==== ПОДГОНКА ПОД КАДР (доли ИСХОДНОГО изображения) ==== */
   var BALL = { x: 0.503, y: 0.345, r: 0.26 };
   var CANDLE = { x: 0.025, y: 0.21 };
 
-  var HERO_URLS = [
-    'assets/hero.jpg',
-    'assets/hero.png',
-    'https://z-cdn-media.chatglm.cn/files/7df0d152-e8c5-4b5f-b5c8-237abe7d8823.png?auth_key=1895760340-c767c8f537124e588073c175f8a3ccba-0-8bf4cbbfba3434c98bf46d82dac7d703'
-  ];
-  var COSMOS_URLS = [
-    'assets/cosmos.jpg',
-    'assets/cosmos.png',
-    'https://z-cdn-media.chatglm.cn/files/0f212d37-0031-4b10-810e-f93ec29b0020.png?auth_key=1895760340-bea60c1de9154435bfd84ab60f4c4360-0-752013c124285942d0a271637755c628'
-  ];
+  var HERO_URLS = ['assets/hero.jpg', 'assets/hero.png'];
+  var COSMOS_URLS = ['assets/cosmos.jpg', 'assets/cosmos.png'];
 
   function loadFirst(urls, ok, fail) {
     var i = 0;
@@ -85,7 +69,6 @@
   var mouse = { x: 0, y: 0, tx: 0, ty: 0 };
   var ballStars = [], motes = [], fogs = [], skyStars = [];
 
-  /* Центр шара в пикселях окна с учётом cover-обрезки */
   function computeGeo() {
     var s = Math.max(W / imgW, H / imgH);
     var dw = imgW * s, dh = imgH * s;
@@ -143,7 +126,6 @@
     fx.save();
     fx.beginPath(); fx.arc(cx, cy, R, 0, Math.PI * 2); fx.clip();
     fx.globalCompositeOperation = 'lighter';
-    /* дышит и ярчеет при погружении */
     fx.globalAlpha = Math.min(1, (0.72 + 0.28 * Math.sin(t * 0.45)) * (0.85 + 0.6 * (p || 0)));
     var i, a, g;
     for (i = 0; i < 4; i++) {
@@ -179,7 +161,6 @@
 
     fx.globalCompositeOperation = 'lighter';
 
-    /* свеча */
     var f = 0.7 + 0.3 * Math.abs(Math.sin(t * 9 + 0.6)) + 0.18 * Math.sin(t * 23 + 1.7);
     if (f < 0.15) f = 0.15;
     var gx = CANDLE.x * W, gy = CANDLE.y * H, gr = (0.15 + 0.03 * f) * H;
@@ -190,7 +171,6 @@
     fx.fillStyle = cg;
     fx.fillRect(0, 0, W, H);
 
-    /* туман */
     for (var i = 0; i < fogs.length; i++) {
       var fo = fogs[i];
       var fxp = (fo.x + Math.sin(t * fo.sp + fo.ph) * 0.07) * W;
@@ -208,7 +188,6 @@
       fx.restore();
     }
 
-    /* пылинки */
     for (var j = 0; j < motes.length; j++) {
       var m = motes[j];
       var yy = 0.8 - ((t * m.v + m.off) % 0.6);
@@ -219,7 +198,6 @@
       fx.fill();
     }
 
-    /* ТОННЕЛЬ: мир вне шара гаснет, кромка стекла загорается */
     if (p > 0.02) {
       var dk = ss(0.05, 0.85, p);
       fx.globalCompositeOperation = 'source-over';
@@ -245,7 +223,6 @@
     if (!cfx) return;
     cfx.clearRect(0, 0, CW, CH);
     cfx.globalCompositeOperation = 'lighter';
-    /* если фото космоса нет — процедурная туманность */
     if (!cosImgLoaded) {
       for (var k = 0; k < 5; k++) {
         var bx = CW * (0.2 + 0.15 * k) + Math.sin(t * 0.05 + k * 1.3) * 40;
@@ -341,10 +318,8 @@
     html.classList.add('has-photo-hero');
     initHero();
     sizeAll();
-    if (window.console) console.info('[Astra] hero-фото OK (' + (url.indexOf('assets') === 0 ? 'assets' : 'CDN') + ') | шар px: ' + Math.round(geo.bx) + ',' + Math.round(geo.by) + ' R=' + Math.round(geo.R));
+    if (window.console) console.info('[Astra] hero-фото OK:', url, '| шар px:', Math.round(geo.bx) + ',' + Math.round(geo.by), 'R=' + Math.round(geo.R));
     if (REDUCED) { reducedStatic(); } else { startLoop(); }
-  }, function () {
-    if (window.console) console.info('[Astra] hero-фото недоступно — включается резервная 3D-сцена');
   });
 
   loadFirst(COSMOS_URLS, function (url, im) {
@@ -355,7 +330,7 @@
     html.classList.add('has-cosmos-photo');
     initCos();
     sizeAll();
-    if (window.console) console.info('[Astra] космос: изображение (' + (url.indexOf('assets') === 0 ? 'assets' : 'CDN') + ')');
+    if (window.console) console.info('[Astra] космос: изображение', url);
     if (REDUCED) { reducedStatic(); } else { startLoop(); }
   }, function () {
     if (!cosWrap || !cosFx) return;
@@ -363,7 +338,7 @@
     html.classList.add('has-cosmos-photo');
     initCos();
     sizeAll();
-    if (window.console) console.info('[Astra] космос: изображение недоступно — процедурный фон');
+    if (window.console) console.info('[Astra] космос: фото не найдено — процедурный фон');
     if (REDUCED) { reducedStatic(); } else { startLoop(); }
   });
 })();
