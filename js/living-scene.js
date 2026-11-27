@@ -1,17 +1,19 @@
 /* Anna Astra — «живые фото»: анимация сгенерированных изображений.
 
-   assets/hero.jpg | hero.png — сцена с шаром:
-     туманность в шаре дышит и медленно вращается, звёзды мерцают,
-     свеча пульсирует тёплым светом, по столу ползёт туман,
-     в луче дрейфуют пылинки; скролл — наезд к шару (origin = центр шара)
-     и круговая маска-пролёт в космос (assets/cosmos.jpg|png).
+   Приоритет источников:
+     1. assets/hero.jpg | hero.png и assets/cosmos.jpg | cosmos.png (локальные)
+     2. временные CDN-ссылки на сгенерированные кадры (ниже) —
+        чтобы сайт работал сразу, без загрузки файлов в репо.
 
-   assets/cosmos.jpg | cosmos.png — космос: Ken Burns + мерцающие звёзды.
+   hero: туманность в шаре дышит и медленно вращается, звёзды мерцают,
+     свеча пульсирует, туман ползёт, пылинки дрейфуют; скролл — наезд к шару
+     (origin = центр шара) и круговая маска-пролёт в космос.
+   cosmos: Ken Burns + мерцающие звёзды.
 
    Если есть assets/hero.mp4 — работает видео-режим (main.js), этот файл
    отключается классом html.has-hero-video. 3D-сцена — последний резерв.
 
-   НАСТРОЙКА ПОД ВАШ КАДР: константы BALL и CANDLE ниже (доли кадра). */
+   НАСТРОЙКА ПОД КАДР: константы BALL и CANDLE ниже (доли кадра). */
 (function () {
   'use strict';
   var html = document.documentElement;
@@ -26,6 +28,19 @@
   /* ==== ПОДГОНКА ПОД КАДР ==== */
   var BALL = { x: 0.503, y: 0.345, r: 0.26 }; // центр шара (x — доля ширины, y — доля высоты), r — доля высоты
   var CANDLE = { x: 0.025, y: 0.21 };          // пламя свечи
+
+  /* ==== ИСТОЧНИКИ ==== */
+  var HERO_URLS = [
+    'assets/hero.jpg',
+    'assets/hero.png',
+    /* временный CDN-источник (кадр из чата); локальный файл в assets/ приоритетнее */
+    'https://z-cdn-media.chatglm.cn/files/7df0d152-e8c5-4b5f-b5c8-237abe7d8823.png?auth_key=1895760340-c767c8f537124e588073c175f8a3ccba-0-8bf4cbbfba3434c98bf46d82dac7d703'
+  ];
+  var COSMOS_URLS = [
+    'assets/cosmos.jpg',
+    'assets/cosmos.png',
+    'https://z-cdn-media.chatglm.cn/files/0f212d37-0031-4b10-810e-f93ec29b0020.png?auth_key=1895760340-bea60c1de9154435bfd84ab60f4c4360-0-752013c124285942d0a271637755c628'
+  ];
 
   function loadFirst(urls, ok) {
     var i = 0;
@@ -242,7 +257,7 @@
     if (REDUCED) reducedStatic();
   });
 
-  loadFirst(['assets/hero.jpg', 'assets/hero.png'], function (url) {
+  loadFirst(HERO_URLS, function (url) {
     if (!heroWrap || !heroImg || !heroFx) return;
     heroImg.src = url;
     heroOn = true;
@@ -255,7 +270,7 @@
     if (REDUCED) { reducedStatic(); } else { startLoop(); }
   });
 
-  loadFirst(['assets/cosmos.jpg', 'assets/cosmos.png'], function (url) {
+  loadFirst(COSMOS_URLS, function (url) {
     if (!cosWrap || !cosImg || !cosFx) return;
     cosImg.src = url;
     cosOn = true;
