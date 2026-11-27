@@ -1,91 +1,81 @@
-# Anna Astra — сайт астролога «Celestial Atelier» ✶
+# Anna Astra — «Погружение» ✶
 
-Люксовый одностраничный сайт для астролога Анны: астрология · таро · руны · психология.
+Люксовый сайт астролога Анны: астрология · таро · руны.
 
-Стек: **чистые HTML/CSS/JS** — без сборщиков и зависимостей проекта. Внешние библиотеки подключаются CDN: **three.js** (3D-сцена), **GSAP + ScrollTrigger** (анимации), **Lenis** (плавный скролл), Google Fonts (кириллические Cormorant Garamond + Manrope).
+## Концепция: погружение в шар
 
-## Дизайн-концепция
+Скролл — это не прокрутка страницы, а **полёт камеры**:
 
-**«Celestial Atelier»** — небесная мастерская: глубокий midnight-фон, шампанское золото, editorial-серифная типографика, ювелирные микро-детали.
+1. **Комната гаданий.** Темнота, стол, на нём — стеклянный шар, вокруг карты таро и руны, ползёт туман, горят свечи.
+2. **Приближение.** Крутим колесо — камера летит к шару. Внутри шара оживает космос: туманности и звёзды становятся ярче с каждым оборотом.
+3. **Пролёт сквозь стекло.** Камера проходит внутрь шара — комната растворяется, и космос становится фоном всего сайта.
 
-| Элемент | Решение |
+Всё построено на **WebGL (three.js)**: настоящие шейдеры туманностей (fbm-шум), стекло с френелевским бликом, процедурные текстуры карт и рун, живой туман и мерцание свечей. Прогресс жёстко привязан к скроллу (`scrub: true`) — **никакой инерции и задержек**, кадр всегда соответствует позиции колеса.
+
+## Что изменилось по фидбеку v1
+
+| Было | Стало |
 |---|---|
-| Палитра | `#08070F` midnight, `#D8B776/#F2DCA8` champagne gold, `#8C7BE0` starlight violet, ivory `#EFE9DC` |
-| Типографика | Cormorant Garamond (дисплей, курсивные акценты с золотым градиентом) + Manrope (UI, разрядка в caps) |
-| Фирменные приёмы | corner ticks (угловые риски), hairline-рамки, ✶-орнаменты, зерно плёнки (grain), виньетка |
-| 3D | Шейдерное звёздное небо (3 слоя, мерцание), золотая пыль, созвездия, **колесо зодиака** с canvas-текстурой (глифы, круговая латынь «Astra inclinant, non necessitant»), параллакс мыши, привязка к скроллу |
-| Motion | Прелоадер со счётчиком и колесом, blur-reveal заголовков, timeline с прорисовкой линии, флип + tilt таро-карт, магнитные кнопки, бегущая строка, кастомный курсор с подписями |
-| UX | Клик по таро-карте → переворот; кнопка «Записаться» на обороте подставляет услугу в форму; валидация; success-оверлей; FAQ; слайдер отзывов |
+| Lenis — задержка скролла | Убран полностью. Нативный скролл + pinned-сцена |
+| Блюр текста до скролла | Блюр-эффекты удалены из кода целиком |
+| Рябящий фон | Зерно статичное (op .04), мерцание звёзд снижено, медленный дрейф туманностей |
+| Много текста | Тексты ужаты в 2–3 раза |
+| Фейковые отзывы | Секция удалена |
+| «Как проходит» | Секция удалена |
+| Скролл-анимации фона | Вся сцена управляется скроллом (dive 0→1) |
 
-## Исследование (источники)
+## Подключение сгенерированных ассетов
 
-Прямой просмотр behance.net из среды недоступен (нет браузерного инструмента), поэтому опирался на коллекции, доступные через GitHub, и устоявшуюся картину трендов award-сайтов 2025–2026 (luxury-dark, editorial-серифы, шейдерные 3D-фоны, кинетическая типографика, micro-interactions):
+Сцена полностью самодостаточна, но поддерживает апгрейд до сгенерированных медиа — **просто положите файлы в папку `assets/`, код менять не нужно**:
 
-- `bradtraversy/design-resources-for-developers` — раздел Design Inspiration: **Awwwards, Codrops, Land-book, Httpster, Frontend Mentor**
-- `gztchan/awesome-design` — курируемая база дизайн-ресурсов
-- `adrianhajdin/award-winning-website` — разбор Awwwards Site of the Month (подтверждение стека GSAP)
-- `Fullstack-Empire/GSAP-Awwwards-Website` — практика GSAP + ScrollTrigger
-- `mrdoob/three.js` — 3D-библиотека
-- `darkroomengineering/lenis` — smooth scroll индустриального стандарта
-- `motiondivision/motion` (motion.dev) — референс по modern motion API
+### 1. Фон комнаты: `assets/hero-room.jpg`
+Заменяет процедурный фон. Получит параллакс за мышью и медленный наезд.
 
-Вывод из анализа: award-сайты строятся на связке «шейдерный WebGL-фон + GSAP-хореография + инерционный скролл + типографика как главный визуал» — именно это реализовано здесь.
-
-## Структура
-
+Промпт (Midjourney / Flux / DALL·E):
 ```
-anna-astra/
-├── index.html          # разметка, инлайн-SVG (логотип, эмблема, иконки, фазы луны)
-├── css/style.css       # дизайн-система, все стили, адаптив, reduced-motion
-├── js/three-scene.js   # WebGL-сцена: звёзды, пыль, созвездия, колесо зодиака
-├── js/main.js          # GSAP/Lenis, курсор, карты, форма, FAQ, отзывы
-└── README.md
+Cinematic dark moody photograph, an ornate glass scrying crystal ball
+on an antique wooden table in a pitch-dark room, scattered ornate
+tarot cards with gold backs and small engraved rune stones around it,
+thin mist creeping over the table, single warm candlelight from the
+left, deep shadows, volumetric fog, photorealistic, shallow depth of
+field, centered composition, copy space above the ball, muted palette
+with warm gold highlights --ar 16:9
 ```
+Спека: **16:9, 2048×1152 или 2400×1350**, без текста и людей.
 
-## Быстрый старт
+### 2. Видео космоса: `assets/cosmos.mp4`
+После пролёта плавно сменяет процедурный космос (fade на последних 12% dive).
 
-Локально: открыть `index.html` в браузере или `python -m http.server 8000` → `http://localhost:8000`.
-Лучше через сервер — так корректнее подгружаются шейдеры и шрифты.
+Промпт (Runway / Kling / Luma):
+```
+Slow cinematic drift through deep space nebula, violet and gold cosmic
+clouds, sparse twinkling stars, gentle forward motion, seamless loop,
+no planets, no text, dark elegant mood, 4k
+```
+Спека: **1920×1080, 8–12 сек, бесшовный луп, H.264 MP4 (без звука)**,
+вес до ~8 МБ (сожмите через HandBrake, CRF 26).
 
-### GitHub Pages (бесплатный хостинг)
+Файла нет → работает процедурная версия. Файл появился → сайт сам переключается.
 
-1. `Settings → Pages`
-2. Source: **Deploy from a branch**
-3. Branch: **main**, папка **/ (root)** → Save
-4. Через 1–2 минуты сайт: `https://burovgena-eng.github.io/anna-astra/`
+## Деплой
 
-### Vercel
+**GitHub Pages:** Settings → Pages → Deploy from a branch → `main` / `(root)` → Save.
+Адрес: `https://burovgena-eng.github.io/anna-astra/`
 
-1. vercel.com → **Add New → Project** → импортировать `anna-astra`
-2. Framework Preset: **Other**, Build Command и Output — пустые
-3. Deploy
+**Vercel:** Import repo → Framework: Other → Deploy (без build).
 
-## Замена контента
+Локально: `python -m http.server 8000` → `http://localhost:8000`.
 
-| Что | Где |
-|---|---|
-| Контакты | `index.html`, поиск по `anna_astra` и `hello@anna-astra.com` (помечены `<!-- ЗАМЕНИТЕ -->`) |
-| Фото Анны | Заменить `<svg class="emblem">…</svg>` в блоке About на: `<img class="pc-photo" src="assets/anna.jpg" alt="Анна — астролог">` (стиль `.pc-photo` уже есть) |
-| Приём заявок | `js/main.js`, константа `FORM_ENDPOINT`. Пример: создать форму на [formspree.io](https://formspree.io) и вставить `var FORM_ENDPOINT = 'https://formspree.io/f/XXXXXXXX';` — данные будут уходить на почту. Альтернатива: Telegram-бот (обработчик на любом serverless) |
-| Отзывы и тексты | `index.html`, секции `#reviews`, `#about`, `#process`, `#faq` |
-| Цвета | `css/style.css`, переменные в `:root` |
+## Что заменить перед публикацией
 
-## Производительность и доступность
+- [ ] Контакты: поиск по `anna_astra` и `hello@anna-astra.com` (помечены `<!-- ЗАМЕНИТЕ -->`)
+- [ ] Фото Анны: `<img class="pc-photo" src="assets/anna.jpg" alt="Анна">` вместо SVG-эмблемы в About (стиль готов)
+- [ ] Форма: `FORM_ENDPOINT` в `js/main.js` (Formspree: `https://formspree.io/f/XXXXXXXX`)
+- [ ] При желании — сгенерировать `hero-room.jpg` и `cosmos.mp4` (промпты выше)
 
-- `prefers-reduced-motion`: отключаются Lenis, курсор, marquee, орбиты; 3D-сцена рендерит один кадр
-- Пауза WebGL-рендера при скрытой вкладке; DPR ограничен 2; упрощённые сцены на мобильных
-- Семантическая разметка, aria-атрибуты (меню, флип-карты, FAQ, диалог), видимый фокус
-- Контент доступен и без JS (`.no-anim`), форма имеет сервер-независимый fallback
+## Технические заметки
 
-## Чек-лист перед публикацией
-
-- [ ] Заменить Telegram/e-mail на реальные
-- [ ] Добавить фото Анны (см. выше)
-- [ ] Подключить `FORM_ENDPOINT` (Formspree или бот)
-- [ ] Заменить демо-отзывы реальными
-- [ ] Добавить `og:image` 1200×630 в `<head>`
-- [ ] Проверить сайт на телефоне (Chrome DevTools → device toolbar)
-
----
-
-© 2026 Anna Astra. Дизайн и код — «Celestial Atelier».
+- three.js r128 (UMD), GSAP + ScrollTrigger, Google Fonts (кириллица). Без сборщиков.
+- `prefers-reduced-motion`: сцена рендерит один кадр, pinned-полёт отключён.
+- Рендер-пауза при скрытой вкладке; DPR ≤ 1.75; на мобильных меньше тумана и камеры дальше.
+- Контент доступен без JS (`no-anim`), форма имеет валидацию и fallback.

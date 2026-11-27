@@ -1,4 +1,4 @@
-/* Anna Astra — интерактив и анимации (GSAP + ScrollTrigger + Lenis) */
+/* Anna Astra — интерактив: pinned-погружение, курсор, карты, форма */
 (function () {
   'use strict';
 
@@ -15,14 +15,17 @@
   html.classList.add(ANIM ? 'js-anim' : 'no-anim');
   if (ANIM && window.ScrollTrigger) gsap.registerPlugin(ScrollTrigger);
 
-  /* ---------- Прелоадер → вход hero ---------- */
+  function ss(a, b, x) {
+    x = (x - a) / (b - a);
+    x = Math.max(0, Math.min(1, x));
+    return x * x * (3 - 2 * x);
+  }
+
+  /* ---------- Прелоадер ---------- */
   var pre = qs('#preloader');
   function heroIn() {
     if (!ANIM) { qsa('[data-hero]').forEach(function (el) { el.style.opacity = 1; }); return; }
-    gsap.to('[data-hero]', {
-      opacity: 1, y: 0, filter: 'blur(0px)', duration: 1.15,
-      ease: 'power3.out', stagger: 0.09, clearProps: 'filter'
-    });
+    gsap.to('[data-hero]', { opacity: 1, y: 0, duration: 1, ease: 'power3.out', stagger: 0.08 });
   }
   if (pre) {
     if (ANIM) {
@@ -33,48 +36,20 @@
         if (exited || !loaded || !counted) return;
         exited = true;
         gsap.timeline({ onComplete: function () { pre.remove(); } })
-          .to('.pre-wheel', { rotate: 200, transformOrigin: '50% 50%', duration: 0.9, ease: 'power3.inOut' })
-          .to(pre, { opacity: 0, duration: 0.6, ease: 'power2.out', onStart: heroIn }, '-=0.2');
+          .to('.pre-wheel', { rotate: 200, transformOrigin: '50% 50%', duration: 0.7, ease: 'power3.inOut' })
+          .to(pre, { opacity: 0, duration: 0.5, ease: 'power2.out', onStart: heroIn }, '-=0.2');
       };
       gsap.to(st, {
-        v: 100, duration: 1.5, ease: 'power2.inOut',
+        v: 100, duration: 1.1, ease: 'power2.inOut',
         onUpdate: function () { num.textContent = String(Math.round(st.v)); },
         onComplete: function () { counted = true; tryExit(); }
       });
       var onReady = function () { loaded = true; tryExit(); };
       if (document.readyState === 'complete') onReady();
       else window.addEventListener('load', onReady, { once: true });
-      setTimeout(function () { if (!loaded) { loaded = true; tryExit(); } }, 3200);
+      setTimeout(function () { if (!loaded) { loaded = true; tryExit(); } }, 2600);
     } else { pre.remove(); heroIn(); }
   } else { heroIn(); }
-
-  /* ---------- Плавный скролл (Lenis) ---------- */
-  var lenis = null;
-  if (!REDUCED && window.Lenis) {
-    try { lenis = new Lenis({ duration: 1.15, smoothWheel: true }); } catch (e) { lenis = null; }
-  }
-  if (lenis && HAS_GSAP && window.ScrollTrigger) {
-    lenis.on('scroll', ScrollTrigger.update);
-    gsap.ticker.add(function (t) { lenis.raf(t * 1000); });
-    gsap.ticker.lagSmoothing(0);
-  } else if (lenis) {
-    var lenisRaf = function (t) { lenis.raf(t); requestAnimationFrame(lenisRaf); };
-    requestAnimationFrame(lenisRaf);
-  }
-
-  function goTo(target) {
-    var el = typeof target === 'string' ? qs(target) : target;
-    if (!el) return;
-    if (lenis) lenis.scrollTo(el, { offset: -72, duration: 1.2 });
-    else el.scrollIntoView({ behavior: REDUCED ? 'auto' : 'smooth', block: 'start' });
-  }
-
-  qsa('a[href^="#"]').forEach(function (a) {
-    a.addEventListener('click', function (e) {
-      var id = a.getAttribute('href');
-      if (id.length > 1 && qs(id)) { e.preventDefault(); closeMenu(); goTo(id); }
-    });
-  });
 
   /* ---------- Навигация ---------- */
   var nav = qs('.nav');
@@ -83,49 +58,78 @@
   window.addEventListener('scroll', navState, { passive: true });
   navState();
 
-  function openMenu() {
-    body.classList.add('menu-open');
-    if (burger) burger.setAttribute('aria-expanded', 'true');
-    if (lenis) lenis.stop();
-  }
+  function openMenu() { body.classList.add('menu-open'); if (burger) burger.setAttribute('aria-expanded', 'true'); }
   function closeMenu() {
     if (!body.classList.contains('menu-open')) return;
     body.classList.remove('menu-open');
     if (burger) burger.setAttribute('aria-expanded', 'false');
-    if (lenis) lenis.start();
   }
   if (burger) burger.addEventListener('click', function () {
     if (body.classList.contains('menu-open')) closeMenu(); else openMenu();
   });
 
-  /* ---------- Scroll-анимации ---------- */
+  qsa('a[href^="#"]').forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      var id = a.getAttribute('href');
+      var el = id.length > 1 ? qs(id) : null;
+      if (el) {
+        e.preventDefault();
+        closeMenu();
+        el.scrollIntoView({ behavior: REDUCED ? 'auto' : 'smooth', block: 'start' });
+      }
+    });
+  });
+
+  /* ---------- Видео космоса (опциональный сгенерированный ассет) ---------- */
+  var video = qs('#cosmosVideo');
+  var videoOK = false;
+  if (video) {
+    video.addEventListener('canplay', function () { videoOK = true; }, { once: true });
+    video.addEventListener('error', function () { videoOK = false; video.style.display = 'none'; }, { once: true });
+    video.src = 'assets/cosmos.mp4';
+    video.load();
+  }
+  function updateVideo(p) {
+    if (!video || !videoOK) return;
+    var o = Math.max(0, Math.min(1, (p - 0.88) / 0.12));
+    video.style.opacity = String(o);
+    if (o > 0 && video.paused) { video.play().catch(function () {}); }
+  }
+
+  /* ---------- Pinned-погружение: скролл управляет сценой ---------- */
+  var heroUI = qs('.hero-ui');
+  var hint = qs('.scroll-hint');
+  var dim = qs('.page-dim');
   if (ANIM && window.ScrollTrigger) {
-    qsa('[data-reveal]').forEach(function (el) {
-      var kind = el.getAttribute('data-reveal');
-      var from = { opacity: 0, y: 36 };
-      if (kind === 'blur') { from.filter = 'blur(12px)'; from.y = 22; }
-      gsap.fromTo(el, from, {
-        opacity: 1, y: 0, filter: 'blur(0px)', duration: 1.05, ease: 'power3.out',
-        scrollTrigger: { trigger: el, start: 'top 88%', once: true },
-        clearProps: 'filter,transform'
-      });
-    });
-    gsap.fromTo('.timeline-line', { scaleY: 0 }, {
-      scaleY: 1, ease: 'none',
-      scrollTrigger: { trigger: '.timeline', start: 'top 74%', end: 'bottom 58%', scrub: 0.5 }
-    });
-    gsap.fromTo('.steps .step', { opacity: 0, y: 44 }, {
-      opacity: 1, y: 0, duration: 1, ease: 'power3.out', stagger: 0.16,
-      scrollTrigger: { trigger: '.steps', start: 'top 78%', once: true }
-    });
-    /* прогресс hero → 3D-сцена */
     ScrollTrigger.create({
-      trigger: '#hero', start: 'top top', end: '+=150%', scrub: true,
-      onUpdate: function (s) { window.__astraScroll = { hero: s.progress }; }
+      trigger: '#hero',
+      start: 'top top',
+      end: '+=260%',
+      pin: true,
+      scrub: true,
+      anticipatePin: 1,
+      onUpdate: function (s) {
+        var p = s.progress;
+        window.__astraScroll = { hero: p };
+        if (heroUI) {
+          heroUI.style.opacity = String(Math.max(0, 1 - p / 0.22));
+          heroUI.style.transform = 'translateY(' + (-p * 90) + 'px)';
+        }
+        if (hint) hint.style.opacity = String(Math.max(0, 1 - p / 0.1));
+        if (dim) dim.style.opacity = String(ss(0.78, 1, p) * 0.85);
+        updateVideo(p);
+      }
+    });
+
+    /* reveal секций — только opacity/translate, без блюра */
+    qsa('[data-reveal]').forEach(function (el) {
+      gsap.fromTo(el, { opacity: 0, y: 30 }, {
+        opacity: 1, y: 0, duration: 0.9, ease: 'power3.out',
+        scrollTrigger: { trigger: el, start: 'top 90%', once: true }
+      });
     });
   } else {
     qsa('[data-reveal]').forEach(function (el) { el.style.opacity = 1; });
-    qsa('.timeline-line').forEach(function (el) { el.style.transform = 'translateX(-0.5px) scaleY(1)'; });
   }
 
   /* ---------- Кастомный курсор ---------- */
@@ -170,7 +174,7 @@
     });
   }
 
-  /* ---------- Таро-карты: флип + tilt ---------- */
+  /* ---------- Таро-карты ---------- */
   function selectService(v) {
     var inp = qs('input[name="service"][value="' + v + '"]');
     if (inp) inp.checked = true;
@@ -205,46 +209,11 @@
     qsa('[data-service]', card).forEach(function (btn) {
       btn.addEventListener('click', function () {
         selectService(btn.getAttribute('data-service'));
-        goTo('#booking');
+        var b = qs('#booking');
+        if (b) b.scrollIntoView({ behavior: REDUCED ? 'auto' : 'smooth' });
       });
     });
   });
-
-  /* ---------- Отзывы ---------- */
-  var slides = qsa('.t-slide');
-  var dotsWrap = qs('.t-dots');
-  var tIndex = 0, tTimer = null;
-  function renderT() {
-    slides.forEach(function (s, j) { s.classList.toggle('is-active', j === tIndex); });
-    qsa('.dot', dotsWrap).forEach(function (d, j) { d.classList.toggle('is-active', j === tIndex); });
-  }
-  function showT(i, manual) {
-    tIndex = (i + slides.length) % slides.length;
-    renderT();
-    if (manual) restartT();
-  }
-  function restartT() {
-    clearInterval(tTimer);
-    if (!REDUCED) tTimer = setInterval(function () { showT(tIndex + 1); }, 6500);
-  }
-  if (slides.length && dotsWrap) {
-    slides.forEach(function (_, i) {
-      var d = document.createElement('button');
-      d.className = 'dot'; d.type = 'button';
-      d.setAttribute('aria-label', 'Отзыв ' + (i + 1));
-      d.addEventListener('click', function () { showT(i, true); });
-      dotsWrap.appendChild(d);
-    });
-    var prev = qs('.t-prev'), next = qs('.t-next');
-    if (prev) prev.addEventListener('click', function () { showT(tIndex - 1, true); });
-    if (next) next.addEventListener('click', function () { showT(tIndex + 1, true); });
-    renderT(); restartT();
-    var wrap = qs('.reviews-wrap');
-    if (wrap) {
-      wrap.addEventListener('mouseenter', function () { clearInterval(tTimer); });
-      wrap.addEventListener('mouseleave', restartT);
-    }
-  }
 
   /* ---------- FAQ ---------- */
   qsa('.faq-item').forEach(function (item) {
@@ -268,9 +237,7 @@
     qsa('.faq-item.open .faq-a').forEach(function (p) { p.style.maxHeight = p.scrollHeight + 'px'; });
   });
 
-  /* ---------- Форма записи ----------
-     FORM_ENDPOINT — подключите приём заявок:
-     например https://formspree.io/f/XXXXXXXX (см. README) */
+  /* ---------- Форма ---------- */
   var FORM_ENDPOINT = '';
   var form = qs('#bookingForm');
   var overlay = qs('#successOverlay');
@@ -278,7 +245,6 @@
   function showSuccess() {
     if (!overlay) return;
     overlay.classList.add('show');
-    if (lenis) lenis.stop();
     if (ANIM && qs('.succ-star', overlay)) {
       gsap.fromTo('.succ-star', { scale: 0.4, rotate: -50, opacity: 0 },
         { scale: 1, rotate: 0, opacity: 1, duration: 0.9, ease: 'back.out(1.7)' });
@@ -288,7 +254,6 @@
   function hideSuccess() {
     if (!overlay) return;
     overlay.classList.remove('show');
-    if (lenis && !body.classList.contains('menu-open')) lenis.start();
   }
   if (overlay) {
     var cbtn = qs('.succ-close', overlay);
@@ -345,11 +310,11 @@
           body: JSON.stringify(payload)
         }).then(finish).catch(function () {
           if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('is-loading'); }
-          if (err) err.textContent = 'Не удалось отправить. Напишите напрямую в Telegram — ссылка слева от формы.';
+          if (err) err.textContent = 'Не удалось отправить. Напишите напрямую в Telegram.';
         });
       } else {
-        console.info('[Anna Astra] Демо-режим формы. Подключите FORM_ENDPOINT — инструкция в README.', payload);
-        setTimeout(finish, 900);
+        console.info('[Anna Astra] Демо-режим формы. Подключите FORM_ENDPOINT — см. README.', payload);
+        setTimeout(finish, 800);
       }
     });
   }

@@ -1,5 +1,11 @@
-/* Anna Astra — фоновая 3D-сцена (three.js r128, UMD):
-   шейдерные звёзды, золотая пыль, созвездия, 3D-колесо зодиака */
+/* Anna Astra — «Погружение»: процедурная WebGL-сцена (three.js r128)
+   Комната гаданий → стеклянный шар с космосом внутри → пролёт сквозь стекло →
+   космос как фон страницы. Прогрессом управляет ScrollTrigger (js/main.js)
+   через window.__astraScroll.hero (0..1).
+
+   Опциональные сгенерированные ассеты (подхватываются автоматически):
+     assets/hero-room.jpg — фон комнаты (параллакс + медленный наезд)
+     assets/cosmos.mp4    — видео космоса после пролёта (подключается в main.js) */
 (function () {
   'use strict';
   var canvas = document.getElementById('sky');
@@ -10,333 +16,451 @@
   var MOBILE = window.innerWidth < 760;
 
   var renderer, scene, camera, clock, rafId = null;
-  var layers = [], dust = null, wheel = null, wheelMats = [], constLines = null;
+  var roomGroup, roomMats = [], backdropArr = [];
+  var glassMat, cosmosMat, cosmosMesh;
+  var fogPlanes = [], glows = [];
   var mouse = { x: 0, y: 0, tx: 0, ty: 0 };
 
-  var STAR_VERT = [
-    'attribute float aScale;',
-    'attribute float aPhase;',
-    'attribute float aSpeed;',
+  function ss(a, b, x) {
+    x = (x - a) / (b - a);
+    x = Math.max(0, Math.min(1, x));
+    return x * x * (3 - 2 * x);
+  }
+
+  /* ---------- Шейдеры ---------- */
+  var COSMOS_VERT = [
+    'varying vec3 vDir;',
+    'void main() {',
+    '  vDir = position;',
+    '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
+    '}'
+  ].join('\n');
+
+  var COSMOS_FRAG = [
+    'varying vec3 vDir;',
     'uniform float uTime;',
-    'uniform float uPixelRatio;',
-    'varying float vTw;',
+    'uniform float uOpacity;',
+    'uniform float uVivid;',
+    'float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }',
+    'float noise(vec3 x) {',
+    '  vec3 i = floor(x); vec3 f = fract(x); f = f * f * (3.0 - 2.0 * f);',
+    '  return mix(mix(mix(hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)), f.x),',
+    '                 mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),',
+    '             mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),',
+    '                 mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);',
+    '}',
+    'float fbm(vec3 p) { float v = 0.0; float a = 0.5; for (int i = 0; i < 4; i++) { v += a * noise(p); p *= 2.03; a *= 0.5; } return v; }',
+    'void main() {',
+    '  vec3 d = normalize(vDir);',
+    '  float n = fbm(d * 2.6 + vec3(0.0, uTime * 0.02, 0.0));',
+    '  float n2 = fbm(d * 5.2 - vec3(uTime * 0.014, 0.0, 0.0));',
+    '  vec3 col = mix(vec3(0.03, 0.02, 0.08), vec3(0.30, 0.23, 0.52), smoothstep(0.32, 0.85, n));',
+    '  col = mix(col, vec3(0.82, 0.66, 0.36), smoothstep(0.70, 0.95, n2) * 0.5);',
+    '  vec3 g = d * 240.0;',
+    '  float s = step(0.9974, hash(floor(g)));',
+    '  float tw = 0.8 + 0.2 * sin(uTime * 1.2 + hash(floor(g) + 7.0) * 40.0);',
+    '  col += s * tw * vec3(0.92, 0.87, 0.72);',
+    '  gl_FragColor = vec4(col * uVivid, uOpacity);',
+    '}'
+  ].join('\n');
+
+  var GLASS_VERT = [
+    'varying vec3 vN; varying vec3 vV;',
     'void main() {',
     '  vec4 mv = modelViewMatrix * vec4(position, 1.0);',
+    '  vN = normalize(normalMatrix * normal);',
+    '  vV = normalize(-mv.xyz);',
     '  gl_Position = projectionMatrix * mv;',
-    '  float tw = 0.62 + 0.38 * sin(uTime * aSpeed + aPhase);',
-    '  vTw = tw;',
-    '  gl_PointSize = aScale * uPixelRatio * (260.0 / -mv.z) * (0.72 + 0.5 * tw);',
     '}'
   ].join('\n');
 
-  var STAR_FRAG = [
-    'uniform vec3 uColor;',
-    'varying float vTw;',
+  var GLASS_FRAG = [
+    'varying vec3 vN; varying vec3 vV;',
+    'uniform float uOpacity; uniform vec3 uTint;',
     'void main() {',
-    '  float d = length(gl_PointCoord - vec2(0.5));',
-    '  if (d > 0.5) discard;',
-    '  float a = smoothstep(0.5, 0.06, d);',
-    '  gl_FragColor = vec4(uColor, a * vTw);',
+    '  float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.5);',
+    '  vec3 col = mix(vec3(0.85, 0.92, 1.0), uTint, f);',
+    '  gl_FragColor = vec4(col, (f * 0.85 + 0.04) * uOpacity);',
     '}'
   ].join('\n');
 
-  var DUST_VERT = [
-    'attribute float aScale;',
-    'attribute float aPhase;',
-    'uniform float uTime;',
-    'uniform float uPixelRatio;',
-    'varying float vA;',
-    'void main() {',
-    '  vec3 p = position;',
-    '  p.y = mod(p.y + uTime * (0.28 + aPhase * 0.12), 14.0) - 7.0;',
-    '  p.x += sin(uTime * 0.25 + aPhase * 6.0) * 0.7;',
-    '  vec4 mv = modelViewMatrix * vec4(p, 1.0);',
-    '  gl_Position = projectionMatrix * mv;',
-    '  vA = 0.22 + 0.18 * sin(uTime * 1.4 + aPhase * 9.0);',
-    '  gl_PointSize = aScale * uPixelRatio * (180.0 / -mv.z);',
-    '}'
-  ].join('\n');
-
-  var DUST_FRAG = [
-    'uniform vec3 uColor;',
-    'varying float vA;',
-    'void main() {',
-    '  float d = length(gl_PointCoord - vec2(0.5));',
-    '  if (d > 0.5) discard;',
-    '  float a = smoothstep(0.5, 0.08, d);',
-    '  gl_FragColor = vec4(uColor, a * vA);',
-    '}'
-  ].join('\n');
-
-  function makeStarLayer(count, colorHex, sizeMin, sizeMax) {
-    var geo = new THREE.BufferGeometry();
-    var pos = new Float32Array(count * 3);
-    var scl = new Float32Array(count);
-    var pha = new Float32Array(count);
-    var spd = new Float32Array(count);
-    for (var i = 0; i < count; i++) {
-      pos[i * 3] = (Math.random() - 0.5) * 68;
-      pos[i * 3 + 1] = (Math.random() - 0.5) * 40;
-      pos[i * 3 + 2] = -(12 + Math.random() * 48);
-      scl[i] = sizeMin + Math.random() * (sizeMax - sizeMin);
-      pha[i] = Math.random() * Math.PI * 2;
-      spd[i] = 0.4 + Math.random() * 1.4;
-    }
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    geo.setAttribute('aScale', new THREE.BufferAttribute(scl, 1));
-    geo.setAttribute('aPhase', new THREE.BufferAttribute(pha, 1));
-    geo.setAttribute('aSpeed', new THREE.BufferAttribute(spd, 1));
-    var mat = new THREE.ShaderMaterial({
-      uniforms: {
-        uTime: { value: 0 },
-        uPixelRatio: { value: Math.min(window.devicePixelRatio || 1, 2) },
-        uColor: { value: new THREE.Color(colorHex) }
-      },
-      vertexShader: STAR_VERT,
-      fragmentShader: STAR_FRAG,
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending
-    });
-    var pts = new THREE.Points(geo, mat);
-    return { points: pts, positions: pos, mat: mat };
-  }
-
-  function makeDust(count) {
-    var geo = new THREE.BufferGeometry();
-    var pos = new Float32Array(count * 3);
-    var scl = new Float32Array(count);
-    var pha = new Float32Array(count);
-    for (var i = 0; i < count; i++) {
-      pos[i * 3] = (Math.random() - 0.5) * 26;
-      pos[i * 3 + 1] = (Math.random() - 0.5) * 14;
-      pos[i * 3 + 2] = -(2 + Math.random() * 7);
-      scl[i] = 0.5 + Math.random() * 1.2;
-      pha[i] = Math.random();
-    }
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    geo.setAttribute('aScale', new THREE.BufferAttribute(scl, 1));
-    geo.setAttribute('aPhase', new THREE.BufferAttribute(pha, 1));
-    var mat = new THREE.ShaderMaterial({
-      uniforms: {
-        uTime: { value: 0 },
-        uPixelRatio: { value: Math.min(window.devicePixelRatio || 1, 2) },
-        uColor: { value: new THREE.Color(0xE9CF9C) }
-      },
-      vertexShader: DUST_VERT,
-      fragmentShader: DUST_FRAG,
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending
-    });
-    return new THREE.Points(geo, mat);
-  }
-
-  function drawFourPoint(ctx, x, y, R, r) {
-    ctx.beginPath();
-    for (var i = 0; i < 4; i++) {
-      var a = -Math.PI / 2 + i * Math.PI / 2;
-      var a2 = a + Math.PI / 4;
-      ctx.lineTo(x + Math.cos(a) * R, y + Math.sin(a) * R);
-      ctx.lineTo(x + Math.cos(a2) * r, y + Math.sin(a2) * r);
-    }
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  function makeWheelTexture() {
-    var S = 1024;
-    var c = document.createElement('canvas');
-    c.width = c.height = S;
-    var ctx = c.getContext('2d');
-    var cx = S / 2, cy = S / 2;
-    ctx.clearRect(0, 0, S, S);
-
-    /* внешние риски */
-    for (var i = 0; i < 72; i++) {
-      var a = i / 72 * Math.PI * 2;
-      var isLong = i % 6 === 0;
-      var r1 = isLong ? 468 : 482;
-      ctx.strokeStyle = 'rgba(226,196,140,' + (isLong ? 0.9 : 0.4) + ')';
-      ctx.lineWidth = isLong ? 2.6 : 1.3;
-      ctx.beginPath();
-      ctx.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
-      ctx.lineTo(cx + Math.cos(a) * 500, cy + Math.sin(a) * 500);
-      ctx.stroke();
-    }
-
-    /* знаки зодиака */
-    var glyphs = ['\u2648', '\u2649', '\u264A', '\u264B', '\u264C', '\u264D', '\u264E', '\u264F', '\u2650', '\u2651', '\u2652', '\u2653'];
-    ctx.fillStyle = '#E9CF9C';
-    ctx.font = '500 58px "Cormorant Garamond", Georgia, serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    glyphs.forEach(function (g, i) {
-      var a = -Math.PI / 2 + i / 12 * Math.PI * 2;
-      ctx.save();
-      ctx.translate(cx + Math.cos(a) * 408, cy + Math.sin(a) * 408);
-      ctx.rotate(a + Math.PI / 2);
-      ctx.fillText(g, 0, 0);
-      ctx.restore();
-    });
-
-    /* круговая латинская надпись */
-    var text = 'ANNA ASTRA \u00B7 ASTRA INCLINANT \u00B7 NON NECESSITANT \u00B7 ';
-    ctx.fillStyle = 'rgba(226,196,140,0.7)';
-    ctx.font = '600 26px Manrope, Arial, sans-serif';
-    var chars = text.split('');
-    chars.forEach(function (ch, i) {
-      var a = i / chars.length * Math.PI * 2;
-      ctx.save();
-      ctx.translate(cx + Math.cos(a) * 322, cy + Math.sin(a) * 322);
-      ctx.rotate(a + Math.PI / 2);
-      ctx.fillText(ch, 0, 0);
-      ctx.restore();
-    });
-
-    /* внутренние кольца */
-    ctx.strokeStyle = 'rgba(226,196,140,0.75)';
-    ctx.lineWidth = 1.6;
-    ctx.beginPath(); ctx.arc(cx, cy, 262, 0, Math.PI * 2); ctx.stroke();
-    ctx.beginPath(); ctx.arc(cx, cy, 236, 0, Math.PI * 2); ctx.stroke();
-
-    /* центральная звезда */
-    ctx.fillStyle = '#F2DCA8';
-    drawFourPoint(ctx, cx, cy, 84, 20);
-
-    var tex = new THREE.CanvasTexture(c);
-    tex.anisotropy = 4;
-    return tex;
-  }
-
-  function makeGlowTexture() {
-    var S = 256;
-    var c = document.createElement('canvas');
-    c.width = c.height = S;
-    var ctx = c.getContext('2d');
-    var g = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
-    g.addColorStop(0, 'rgba(242,220,168,0.55)');
-    g.addColorStop(0.35, 'rgba(216,183,118,0.18)');
-    g.addColorStop(1, 'rgba(216,183,118,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, S, S);
+  /* ---------- Текстуры (canvas) ---------- */
+  function radialTexture(inner, outer, size) {
+    var S = size || 256;
+    var c = document.createElement('canvas'); c.width = c.height = S;
+    var x = c.getContext('2d');
+    var g = x.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+    g.addColorStop(0, inner);
+    g.addColorStop(1, outer);
+    x.fillStyle = g;
+    x.fillRect(0, 0, S, S);
     return new THREE.CanvasTexture(c);
   }
 
-  function makeConstellation(starPositions) {
-    var total = Math.floor(starPositions.length / 3);
-    var pts = [], used = {}, tries = 0;
-    while (pts.length < 14 && tries < 400) {
-      tries++;
-      var idx = Math.floor(Math.random() * total);
-      if (used[idx]) continue;
-      used[idx] = true;
-      pts.push([starPositions[idx * 3], starPositions[idx * 3 + 1], starPositions[idx * 3 + 2]]);
+  function makeCardTexture(idx) {
+    var w = 512, h = 864;
+    var c = document.createElement('canvas'); c.width = w; c.height = h;
+    var x = c.getContext('2d');
+    x.fillStyle = '#131020'; x.fillRect(0, 0, w, h);
+    var vg = x.createRadialGradient(w / 2, h / 2, 80, w / 2, h / 2, 520);
+    vg.addColorStop(0, 'rgba(216,183,118,.07)'); vg.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = vg; x.fillRect(0, 0, w, h);
+    x.strokeStyle = '#C9A96A'; x.lineWidth = 3; x.strokeRect(20, 20, w - 40, h - 40);
+    x.strokeStyle = 'rgba(201,169,106,.55)'; x.lineWidth = 1.5; x.strokeRect(34, 34, w - 68, h - 68);
+    x.strokeStyle = '#E9CF9C'; x.lineWidth = 2;
+    [[20, 20, 1, 1], [w - 20, 20, -1, 1], [20, h - 20, 1, -1], [w - 20, h - 20, -1, -1]].forEach(function (k) {
+      x.beginPath();
+      x.moveTo(k[0] + 34 * k[2], k[1]); x.lineTo(k[0], k[1]); x.lineTo(k[0], k[1] + 34 * k[3]);
+      x.stroke();
+    });
+    x.strokeStyle = 'rgba(233,207,156,.8)'; x.lineWidth = 2;
+    x.beginPath(); x.arc(w / 2, h / 2 - 20, 120, 0, Math.PI * 2); x.stroke();
+    x.beginPath(); x.arc(w / 2, h / 2 - 20, 104, 0, Math.PI * 2); x.stroke();
+    x.save(); x.translate(w / 2, h / 2 - 20);
+    x.strokeStyle = '#F2DCA8'; x.fillStyle = '#F2DCA8'; x.lineWidth = 4;
+    if (idx === 0) {
+      x.beginPath();
+      x.arc(0, 0, 64, -Math.PI / 2, Math.PI / 2, false);
+      x.arc(-26, 0, 64, Math.PI / 2, -Math.PI / 2, true);
+      x.closePath(); x.fill();
+    } else if (idx === 1) {
+      x.beginPath(); x.arc(0, 0, 42, 0, Math.PI * 2); x.fill();
+      for (var i = 0; i < 12; i++) {
+        var a = i / 12 * Math.PI * 2;
+        x.beginPath(); x.moveTo(Math.cos(a) * 56, Math.sin(a) * 56); x.lineTo(Math.cos(a) * 84, Math.sin(a) * 84); x.stroke();
+      }
+    } else if (idx === 2) {
+      x.beginPath();
+      for (var j = 0; j < 4; j++) {
+        var aa = -Math.PI / 2 + j * Math.PI / 2, a2 = aa + Math.PI / 4;
+        x.lineTo(Math.cos(aa) * 88, Math.sin(aa) * 88); x.lineTo(Math.cos(a2) * 20, Math.sin(a2) * 20);
+      }
+      x.closePath(); x.fill();
+    } else {
+      x.beginPath(); x.arc(0, 0, 46, 0, Math.PI * 2); x.fill();
+      x.beginPath(); x.ellipse(0, 0, 86, 26, -0.35, 0, Math.PI * 2); x.stroke();
     }
-    var arr = [];
-    for (var j = 0; j < pts.length - 1; j++) {
-      arr.push(pts[j][0], pts[j][1], pts[j][2], pts[j + 1][0], pts[j + 1][1], pts[j + 1][2]);
+    x.restore();
+    x.fillStyle = '#D8B776';
+    x.font = '500 58px "Cormorant Garamond", Georgia, serif';
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillText(['I', 'II', 'III', 'IV'][idx], w / 2, h - 86);
+    for (var s = 0; s < 60; s++) {
+      x.fillStyle = 'rgba(233,207,156,' + (Math.random() * 0.05) + ')';
+      x.fillRect(Math.random() * w, Math.random() * h, 1.6, 1.6);
     }
-    var geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(arr), 3));
-    var mat = new THREE.LineBasicMaterial({ color: 0xD8B776, transparent: true, opacity: 0.14 });
-    return new THREE.LineSegments(geo, mat);
+    var t = new THREE.CanvasTexture(c); t.anisotropy = 4;
+    return t;
+  }
+
+  var RUNES = [
+    [[[.34, .12], [.34, .88]], [[.34, .30], [.68, .14]], [[.34, .52], [.68, .36]]],
+    [[[.30, .12], [.30, .88]], [[.70, .12], [.70, .72], [.30, .88]]],
+    [[[.38, .12], [.38, .88]], [[.38, .32], [.68, .47], [.38, .62]]],
+    [[[.36, .12], [.36, .88]], [[.36, .28], [.68, .44]], [[.36, .48], [.68, .64]]],
+    [[[.34, .12], [.34, .88]], [[.34, .16], [.68, .40], [.34, .60], [.68, .88]]]
+  ];
+
+  function makeRuneTexture(strokes) {
+    var S = 256;
+    var c = document.createElement('canvas'); c.width = c.height = S;
+    var x = c.getContext('2d');
+    x.clearRect(0, 0, S, S);
+    var g = x.createRadialGradient(S * 0.4, S * 0.35, 10, S / 2, S / 2, S * 0.52);
+    g.addColorStop(0, '#38304a'); g.addColorStop(0.7, '#241e33'); g.addColorStop(1, '#171226');
+    x.fillStyle = g;
+    x.beginPath();
+    x.moveTo(46, 20);
+    x.quadraticCurveTo(S / 2, 6, S - 46, 22);
+    x.quadraticCurveTo(S - 14, S / 2, S - 44, S - 22);
+    x.quadraticCurveTo(S / 2, S - 8, 44, S - 24);
+    x.quadraticCurveTo(12, S / 2, 46, 20);
+    x.closePath(); x.fill();
+    x.strokeStyle = 'rgba(0,0,0,.35)'; x.lineWidth = 3;
+    x.beginPath(); x.arc(S * 0.32, S * 0.72, 10, 0, Math.PI * 2); x.stroke();
+    x.beginPath(); x.arc(S * 0.7, S * 0.3, 7, 0, Math.PI * 2); x.stroke();
+    x.strokeStyle = '#D9C79B';
+    x.lineWidth = 13; x.lineCap = 'round'; x.lineJoin = 'round';
+    x.shadowColor = 'rgba(217,199,155,.55)'; x.shadowBlur = 10;
+    strokes.forEach(function (st) {
+      x.beginPath();
+      st.forEach(function (p, i) {
+        var px = p[0] * S, py = p[1] * S;
+        if (i === 0) x.moveTo(px, py); else x.lineTo(px, py);
+      });
+      x.stroke();
+    });
+    var t = new THREE.CanvasTexture(c); t.anisotropy = 4;
+    return t;
+  }
+
+  function makeBackdropTexture() {
+    var c = document.createElement('canvas'); c.width = 1024; c.height = 576;
+    var x = c.getContext('2d');
+    var g = x.createRadialGradient(512, 240, 60, 512, 288, 640);
+    g.addColorStop(0, '#1b1433');
+    g.addColorStop(0.55, '#0e0a1d');
+    g.addColorStop(1, '#06040d');
+    x.fillStyle = g; x.fillRect(0, 0, 1024, 576);
+    var r = x.createLinearGradient(0, 0, 1024, 576);
+    r.addColorStop(0, 'rgba(216,183,118,.05)');
+    r.addColorStop(0.4, 'rgba(216,183,118,0)');
+    x.fillStyle = r; x.fillRect(0, 0, 1024, 576);
+    return new THREE.CanvasTexture(c);
+  }
+
+  /* ---------- Сцена ---------- */
+  function init() {
+    renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x050309, 1);
+
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 60);
+    camera.position.set(0, 0.55, 6.5);
+    clock = new THREE.Clock();
+
+    scene.add(new THREE.AmbientLight(0x50446e, 0.65));
+    var warm = new THREE.PointLight(0xe9b96a, 1.15, 10);
+    warm.position.set(-2.4, 1.7, 1.8);
+    scene.add(warm);
+    var cool = new THREE.PointLight(0x6f5fc0, 0.7, 12);
+    cool.position.set(2.6, 2.3, -2.6);
+    scene.add(cool);
+
+    roomGroup = new THREE.Group();
+    scene.add(roomGroup);
+
+    /* Фон комнаты: процедурный + слот под сгенерированное изображение */
+    var backdropProc = new THREE.Mesh(
+      new THREE.PlaneGeometry(17, 9.6),
+      new THREE.MeshBasicMaterial({ map: makeBackdropTexture(), transparent: true, opacity: 1 })
+    );
+    backdropProc.position.set(0, 0.4, -6);
+    roomGroup.add(backdropProc);
+    backdropArr.push(backdropProc);
+
+    var backdropImg = new THREE.Mesh(
+      new THREE.PlaneGeometry(17, 9.6),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.96, visible: false })
+    );
+    backdropImg.material.visible = false;
+    backdropImg.position.set(0, 0.4, -5.95);
+    roomGroup.add(backdropImg);
+    backdropArr.push(backdropImg);
+    new THREE.TextureLoader().load('assets/hero-room.jpg', function (tex) {
+      tex.anisotropy = 4;
+      backdropImg.material.map = tex;
+      backdropImg.material.needsUpdate = true;
+      backdropImg.material.visible = true;
+      backdropProc.visible = false;
+    }, undefined, function () { /* файла нет — остаёмся на процедурном фоне */ });
+
+    /* Стол */
+    var table = new THREE.Mesh(
+      new THREE.CylinderGeometry(4.4, 4.6, 0.28, 48),
+      new THREE.MeshStandardMaterial({ color: 0x191322, roughness: 0.9, metalness: 0.05, transparent: true })
+    );
+    table.position.y = -0.99;
+    roomGroup.add(table);
+
+    var sheen = new THREE.Mesh(
+      new THREE.CircleGeometry(4.3, 48),
+      new THREE.MeshBasicMaterial({ map: radialTexture('rgba(233,185,106,.16)', 'rgba(233,185,106,0)', 256), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })
+    );
+    sheen.rotation.x = -Math.PI / 2;
+    sheen.position.y = -0.849;
+    roomGroup.add(sheen);
+
+    /* Шар */
+    var stand = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.34, 0.44, 0.14, 24),
+      new THREE.MeshStandardMaterial({ color: 0x6b5631, metalness: 0.85, roughness: 0.35, transparent: true })
+    );
+    stand.position.y = -0.865;
+    roomGroup.add(stand);
+
+    cosmosMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uOpacity: { value: 0.32 },
+        uVivid: { value: 0.5 }
+      },
+      vertexShader: COSMOS_VERT,
+      fragmentShader: COSMOS_FRAG,
+      side: THREE.BackSide,
+      transparent: true,
+      depthWrite: false
+    });
+    cosmosMesh = new THREE.Mesh(new THREE.SphereGeometry(0.97, 48, 48), cosmosMat);
+    cosmosMesh.position.set(0, 0.2, 0);
+    scene.add(cosmosMesh);
+
+    glassMat = new THREE.ShaderMaterial({
+      uniforms: { uOpacity: { value: 1 }, uTint: { value: new THREE.Color(0xd8b776) } },
+      vertexShader: GLASS_VERT,
+      fragmentShader: GLASS_FRAG,
+      transparent: true,
+      depthWrite: false
+    });
+    var glass = new THREE.Mesh(new THREE.SphereGeometry(1.0, 48, 48), glassMat);
+    glass.position.set(0, 0.2, 0);
+    scene.add(glass);
+
+    var glowTex = radialTexture('rgba(242,220,168,.5)', 'rgba(242,220,168,0)', 256);
+    var ballGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, transparent: true, opacity: 0.28, depthWrite: false, blending: THREE.AdditiveBlending }));
+    ballGlow.scale.set(3.4, 3.4, 1);
+    ballGlow.position.set(0, 0.2, -0.4);
+    roomGroup.add(ballGlow);
+    glows.push({ sprite: ballGlow, base: 3.4, op: 0.28, ph: 1.3, flicker: 0 });
+
+    /* Карты таро */
+    var cardGeo = new THREE.PlaneGeometry(0.78, 1.3);
+    var cardDefs = [
+      [-1.75, 0.55, 0.5],
+      [1.65, 0.75, -0.35],
+      [1.15, -0.95, 0.9]
+    ];
+    cardDefs.forEach(function (d, i) {
+      var m = new THREE.Mesh(cardGeo, new THREE.MeshBasicMaterial({ map: makeCardTexture(i), transparent: true }));
+      m.rotation.x = -Math.PI / 2;
+      m.rotation.z = d[2];
+      m.position.set(d[0], -0.845, d[1]);
+      roomGroup.add(m);
+    });
+    var lean = new THREE.Mesh(cardGeo, new THREE.MeshBasicMaterial({ map: makeCardTexture(3), transparent: true }));
+    lean.position.set(0.98, -0.24, 0.22);
+    lean.rotation.set(-0.32, -0.5, 0.06);
+    roomGroup.add(lean);
+
+    /* Руны */
+    var runeGeo = new THREE.PlaneGeometry(0.42, 0.5);
+    var runeDefs = [
+      [-0.9, 1.15, 0.3, 0],
+      [-2.35, -0.3, -0.8, 1],
+      [2.35, -0.15, 1.2, 2],
+      [0.45, 1.6, -0.4, 3],
+      [-1.35, -1.45, 2.0, 4]
+    ];
+    runeDefs.forEach(function (d) {
+      var m = new THREE.Mesh(runeGeo, new THREE.MeshBasicMaterial({ map: makeRuneTexture(RUNES[d[3]]), transparent: true }));
+      m.rotation.x = -Math.PI / 2;
+      m.rotation.z = d[2];
+      m.position.set(d[0], -0.843, d[1]);
+      roomGroup.add(m);
+    });
+
+    /* Туман */
+    var fogTex = radialTexture('rgba(255,255,255,.55)', 'rgba(255,255,255,0)', 256);
+    var fogDefs = MOBILE
+      ? [[-2, 0.5, -1.2, 0x9a8cc8], [1.8, 0.1, -2, 0xd8b776]]
+      : [[-2.4, 0.55, -1.3, 0x9a8cc8], [2.2, 0.25, -2.1, 0xd8b776], [0, -0.35, -3.1, 0x8a7fb0], [0.5, 0.7, -4.4, 0xb7a8f2]];
+    fogDefs.forEach(function (d, i) {
+      var m = new THREE.Mesh(
+        new THREE.PlaneGeometry(9, 4),
+        new THREE.MeshBasicMaterial({ map: fogTex, color: d[3], transparent: true, opacity: 0.16, depthWrite: false, blending: THREE.AdditiveBlending })
+      );
+      m.position.set(d[0], d[1], d[2]);
+      m.userData.skipFade = true;
+      roomGroup.add(m);
+      fogPlanes.push({ mesh: m, bx: d[0], op: 0.16, sp: 0.18 + i * 0.07, ph: i * 1.7 });
+    });
+
+    /* Свечи */
+    var candleGlow = radialTexture('rgba(255,196,120,.85)', 'rgba(255,196,120,0)', 128);
+    [[-2.1, 0.85, 0.9, 1.5], [1.75, 0.6, 0.35, 1.1]].forEach(function (d, i) {
+      var s = new THREE.Sprite(new THREE.SpriteMaterial({ map: candleGlow, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
+      s.scale.set(d[3], d[3], 1);
+      s.position.set(d[0], d[1], d[2]);
+      roomGroup.add(s);
+      glows.push({ sprite: s, base: d[3], op: 0.5, ph: i * 2.6, flicker: 1 });
+    });
+
+    /* Сбор материалов для fade комнаты */
+    roomGroup.traverse(function (o) {
+      if (o.isMesh && o.material && !o.userData.skipFade && o !== backdropImg) {
+        o.material.transparent = true;
+        roomMats.push({ mat: o.material, base: o.material.opacity == null ? 1 : o.material.opacity });
+      }
+    });
+    roomMats.push({ mat: backdropProc.material, base: 1 });
+    roomMats.push({ mat: backdropImg.material, base: 0.96 });
+
+    applyLayout();
   }
 
   function applyLayout() {
     MOBILE = window.innerWidth < 760;
-    if (wheel) {
-      wheel.scale.setScalar(MOBILE ? 0.6 : 1);
-      wheel.position.set(MOBILE ? 0 : 3.05, MOBILE ? 2.4 : 0.3, -3.2);
-    }
-    if (constLines) constLines.visible = !MOBILE;
-    if (renderer) {
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-    }
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
   }
 
-  function init() {
-    renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setClearColor(0x000000, 0);
-
-    scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 120);
-    camera.position.set(0, 0, 10);
-    clock = new THREE.Clock();
-
-    layers.push(makeStarLayer(MOBILE ? 420 : 1150, 0xF4EEDC, 0.6, 1.9));
-    layers.push(makeStarLayer(MOBILE ? 180 : 520, 0xE9CF9C, 0.8, 2.3));
-    layers.push(makeStarLayer(MOBILE ? 90 : 240, 0xA99BF0, 0.5, 1.4));
-    layers.forEach(function (l) { scene.add(l.points); });
-
-    dust = makeDust(MOBILE ? 50 : 130);
-    scene.add(dust);
-
-    constLines = makeConstellation(layers[0].positions);
-    scene.add(constLines);
-
-    /* Колесо зодиака */
-    wheel = new THREE.Group();
-    var ringMat1 = new THREE.MeshBasicMaterial({ color: 0xC9A96A, transparent: true, opacity: 0.5 });
-    var ringMat2 = new THREE.MeshBasicMaterial({ color: 0xC9A96A, transparent: true, opacity: 0.26 });
-    var ring1 = new THREE.Mesh(new THREE.TorusGeometry(2.62, 0.012, 8, 160), ringMat1);
-    var ring2 = new THREE.Mesh(new THREE.TorusGeometry(2.34, 0.008, 8, 160), ringMat2);
-    var planeMat = new THREE.MeshBasicMaterial({ map: makeWheelTexture(), transparent: true, opacity: 0.92, side: THREE.DoubleSide, depthWrite: false });
-    var plane = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 5.6), planeMat);
-    var glowMat = new THREE.SpriteMaterial({ map: makeGlowTexture(), transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending });
-    var glow = new THREE.Sprite(glowMat);
-    glow.scale.set(9.5, 9.5, 1);
-    glow.position.z = -0.6;
-    wheel.add(ring1, ring2, plane, glow);
-    wheel.rotation.x = -0.52;
-    wheelMats = [
-      { mat: ringMat1, base: 0.5 },
-      { mat: ringMat2, base: 0.26 },
-      { mat: planeMat, base: 0.92 },
-      { mat: glowMat, base: 0.32 }
-    ];
-    scene.add(wheel);
-
-    applyLayout();
-
-    /* перерисовать текстуру после загрузки шрифтов */
-    if (document.fonts && document.fonts.ready) {
-      document.fonts.ready.then(function () {
-        planeMat.map = makeWheelTexture();
-        planeMat.needsUpdate = true;
-      }).catch(function () {});
+  /* ---------- Камера по прогрессу ---------- */
+  function camAt(p) {
+    var startZ = MOBILE ? 7.4 : 6.5;
+    var z, y;
+    if (p < 0.45) {
+      var t = ss(0, 1, p / 0.45);
+      z = startZ - (startZ - 2.4) * t;
+      y = 0.55 - (0.55 - 0.22) * t;
+    } else if (p < 0.78) {
+      var t2 = ss(0, 1, (p - 0.45) / 0.33);
+      z = 2.4 - (2.4 - 1.05) * t2;
+      y = 0.22 - (0.22 - 0.14) * t2;
+    } else {
+      var t3 = ss(0, 1, (p - 0.78) / 0.22);
+      z = 1.05 - (1.05 - 0.34) * t3;
+      y = 0.14 - (0.14 - 0.1) * t3;
     }
+    return { x: Math.sin(p * Math.PI) * -0.22, y: y, z: z };
   }
 
   function animate() {
     rafId = requestAnimationFrame(animate);
     var t = clock.getElapsedTime();
-    layers.forEach(function (l) { l.mat.uniforms.uTime.value = t; });
-    if (dust) dust.material.uniforms.uTime.value = t;
+    if (cosmosMat) cosmosMat.uniforms.uTime.value = t;
+    cosmosMesh.rotation.y = t * 0.02;
 
-    var p = (window.__astraScroll && typeof window.__astraScroll.hero === 'number') ? window.__astraScroll.hero : 0;
-    if (wheel) {
-      wheel.rotation.z += 0.0016;
-      wheel.position.y = (MOBILE ? 2.4 : 0.3) + p * 4.8;
-      var f = Math.max(0, 1 - p * 1.45);
-      wheelMats.forEach(function (m) { m.mat.opacity = m.base * f; });
-    }
-    if (constLines && constLines.material) {
-      constLines.material.opacity = 0.1 + 0.06 * Math.sin(t * 0.7);
-    }
-    camera.position.z = 10 + p * 3;
+    var P = (window.__astraScroll && typeof window.__astraScroll.hero === 'number') ? window.__astraScroll.hero : 0;
 
+    var rf = 1 - ss(0.58, 0.8, P);
+    roomGroup.visible = rf > 0.02;
+    roomMats.forEach(function (m) { m.mat.opacity = m.base * rf; });
+
+    var c = camAt(P);
+    var amp = 0.4 * (1 - ss(0, 0.45, P));
     if (FINE && !REDUCED) {
-      mouse.x += (mouse.tx - mouse.x) * 0.045;
-      mouse.y += (mouse.ty - mouse.y) * 0.045;
-      camera.position.x = mouse.x * 0.55;
-      camera.position.y = -mouse.y * 0.35 + p * 1.2;
+      mouse.x += (mouse.tx - mouse.x) * 0.05;
+      mouse.y += (mouse.ty - mouse.y) * 0.05;
     }
-    camera.lookAt(0, 0, -6);
+    camera.position.set(c.x + mouse.x * amp, c.y - mouse.y * amp * 0.6, c.z);
+    camera.lookAt(0, 0.16, 0);
+
+    var fov = 55 + 9 * ss(0.45, 0.8, P);
+    if (Math.abs(camera.fov - fov) > 0.05) { camera.fov = fov; camera.updateProjectionMatrix(); }
+
+    glassMat.uniforms.uOpacity.value = 1 - ss(0.52, 0.72, P);
+    cosmosMat.uniforms.uOpacity.value = 0.32 + 0.68 * ss(0.05, 0.5, P);
+    cosmosMat.uniforms.uVivid.value = 0.5 + 0.5 * ss(0.25, 0.75, P);
+
+    fogPlanes.forEach(function (f) {
+      f.mesh.position.x = f.bx + Math.sin(t * f.sp + f.ph) * 0.7;
+      f.mesh.material.opacity = f.op * (0.75 + 0.25 * Math.sin(t * 0.45 + f.ph)) * rf;
+    });
+    glows.forEach(function (g) {
+      var s = g.base * (g.flicker ? (0.9 + 0.07 * Math.sin(t * 11 + g.ph) + 0.04 * Math.sin(t * 23 + g.ph * 2)) : 1);
+      g.sprite.scale.set(s, s, 1);
+      g.sprite.material.opacity = g.op * rf;
+    });
+
+    var bs = 1 + 0.025 * ss(0, 1, P);
+    backdropArr.forEach(function (b) {
+      b.scale.set(bs, bs, 1);
+      b.position.x = mouse.x * 0.18;
+    });
+
     renderer.render(scene, camera);
   }
 
