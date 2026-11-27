@@ -1,14 +1,17 @@
 /* Anna Astra — «живые фото»: анимация сгенерированных изображений.
 
-   Геометрия: позиция шара считается в ПИКСЕЛЯХ ОКНА через cover-математику
-   (учитывает обрезку object-fit: cover) — наезд, маска и эффекты всегда
-   точно на шаре при любом соотношении сторон окна.
+   Геометрия: позиция шара считается в ПИКСЕЛЯХ ОКНА через cover-математику —
+   наезд, маска и эффекты всегда точно на шаре при любом окне.
 
-   Приоритет источников:
-     1. assets/hero.jpg | hero.png и assets/cosmos.jpg | cosmos.png
-     2. временные CDN-ссылки на сгенерированные кадры
-   Если есть assets/hero.mp4 — видео-режим (main.js). 3D — последний резерв
-   и стартует только если фото не загрузилось за 2.4 с (без вспышки).
+   Погружение: при скролле мир вне шара гаснет (тоннель), стеклянная кромка
+   загорается, туманность внутри ярчеет — затем маска раскрывает космос.
+
+   Приоритет источников: assets/hero.jpg|png и assets/cosmos.jpg|png,
+   затем временные CDN-ссылки. Если есть assets/hero.mp4 — видео-режим.
+   3D стартует только если фото не загрузилось за 2.4 с.
+
+   Диагностика: откройте консоль (F12) — строки с префиксом [Astra]
+   показывают активный режим, источник картинки и координаты шара.
 
    НАСТРОЙКА ПОД КАДР: константы BALL и CANDLE ниже. */
 (function () {
@@ -17,6 +20,20 @@
   var REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var FINE = window.matchMedia('(pointer: fine)').matches;
 
+  /* страница всегда стартует сверху — иначе можно попасть в середину pin-сцены */
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  window.scrollTo(0, 0);
+
+  /* фолбэк высоты hero для браузеров без svh */
+  var heroSec = document.getElementById('hero');
+  if (heroSec) {
+    heroSec.style.height = '100vh';
+    heroSec.style.minHeight = '100vh';
+    if (window.CSS && CSS.supports && CSS.supports('height', '100svh')) {
+      heroSec.style.height = '100svh';
+    }
+  }
+
   function ss(a, b, x) {
     x = (x - a) / (b - a);
     x = Math.max(0, Math.min(1, x));
@@ -24,10 +41,9 @@
   }
 
   /* ==== ПОДГОНКА ПОД КАДР (доли ИСХОДНОГО изображения) ==== */
-  var BALL = { x: 0.503, y: 0.345, r: 0.26 }; // x — доля ширины кадра, y и r — доли высоты кадра
-  var CANDLE = { x: 0.025, y: 0.21 };          // пламя свечи
+  var BALL = { x: 0.503, y: 0.345, r: 0.26 };
+  var CANDLE = { x: 0.025, y: 0.21 };
 
-  /* ==== ИСТОЧНИКИ ==== */
   var HERO_URLS = [
     'assets/hero.jpg',
     'assets/hero.png',
@@ -62,7 +78,7 @@
   var cosFx = document.getElementById('cosmoFx');
   var dim = document.querySelector('.page-dim');
 
-  var heroOn = false, cosOn = false, raf = null;
+  var heroOn = false, cosOn = false, cosImgLoaded = false, raf = null;
   var fx = null, cfx = null, W = 0, H = 0, CW = 0, CH = 0;
   var imgW = 1920, imgH = 1080;
   var geo = { bx: 0, by: 0, R: 0 };
@@ -123,11 +139,12 @@
     }
   }
 
-  function drawNebula(cx, cy, R, t) {
+  function drawNebula(cx, cy, R, t, p) {
     fx.save();
     fx.beginPath(); fx.arc(cx, cy, R, 0, Math.PI * 2); fx.clip();
     fx.globalCompositeOperation = 'lighter';
-    fx.globalAlpha = 0.72 + 0.28 * Math.sin(t * 0.45); /* дыхание */
+    /* дышит и ярчеет при погружении */
+    fx.globalAlpha = Math.min(1, (0.72 + 0.28 * Math.sin(t * 0.45)) * (0.85 + 0.6 * (p || 0)));
     var i, a, g;
     for (i = 0; i < 4; i++) {
       a = t * 0.12 + i * Math.PI / 2;
@@ -155,10 +172,10 @@
     fx.restore();
   }
 
-  function drawHero(t) {
+  function drawHero(t, p) {
     if (!fx) return;
     fx.clearRect(0, 0, W, H);
-    drawNebula(geo.bx, geo.by, geo.R, t);
+    drawNebula(geo.bx, geo.by, geo.R, t, p);
 
     fx.globalCompositeOperation = 'lighter';
 
@@ -201,6 +218,25 @@
       fx.arc(xx * W, yy * H, m.s, 0, Math.PI * 2);
       fx.fill();
     }
+
+    /* ТОННЕЛЬ: мир вне шара гаснет, кромка стекла загорается */
+    if (p > 0.02) {
+      var dk = ss(0.05, 0.85, p);
+      fx.globalCompositeOperation = 'source-over';
+      var dg = fx.createRadialGradient(geo.bx, geo.by, geo.R * 0.92, geo.bx, geo.by, Math.max(W, H) * 1.25);
+      dg.addColorStop(0, 'rgba(3,2,8,' + (0.88 * dk).toFixed(3) + ')');
+      dg.addColorStop(1, 'rgba(3,2,8,' + (0.96 * dk).toFixed(3) + ')');
+      fx.fillStyle = dg;
+      fx.fillRect(0, 0, W, H);
+      fx.globalCompositeOperation = 'lighter';
+      fx.strokeStyle = 'rgba(214,190,150,' + (0.12 + 0.5 * dk).toFixed(3) + ')';
+      fx.lineWidth = 3;
+      fx.beginPath(); fx.arc(geo.bx, geo.by, geo.R, 0, Math.PI * 2); fx.stroke();
+      fx.strokeStyle = 'rgba(242,220,168,' + (0.3 * dk).toFixed(3) + ')';
+      fx.lineWidth = 10;
+      fx.beginPath(); fx.arc(geo.bx, geo.by, geo.R * 1.015, 0, Math.PI * 2); fx.stroke();
+    }
+
     fx.globalCompositeOperation = 'source-over';
     fx.globalAlpha = 1;
   }
@@ -209,6 +245,20 @@
     if (!cfx) return;
     cfx.clearRect(0, 0, CW, CH);
     cfx.globalCompositeOperation = 'lighter';
+    /* если фото космоса нет — процедурная туманность */
+    if (!cosImgLoaded) {
+      for (var k = 0; k < 5; k++) {
+        var bx = CW * (0.2 + 0.15 * k) + Math.sin(t * 0.05 + k * 1.3) * 40;
+        var by = CH * (0.28 + 0.11 * (k % 4)) + Math.cos(t * 0.04 + k * 2) * 30;
+        var br = CW * (0.2 + 0.06 * (k % 3));
+        var hue = k % 2 ? '196,164,96' : '122,102,205';
+        var g = cfx.createRadialGradient(bx, by, 0, bx, by, br);
+        g.addColorStop(0, 'rgba(' + hue + ',0.15)');
+        g.addColorStop(1, 'rgba(' + hue + ',0)');
+        cfx.fillStyle = g;
+        cfx.fillRect(bx - br, by - br, br * 2, br * 2);
+      }
+    }
     for (var i = 0; i < skyStars.length; i++) {
       var s = skyStars[i];
       var tw = 0.2 + 0.8 * Math.abs(Math.sin(t * s.v2 + s.p));
@@ -220,8 +270,7 @@
     cfx.globalCompositeOperation = 'source-over';
   }
 
-  function applyScroll() {
-    var p = (window.__astraScroll && typeof window.__astraScroll.hero === 'number') ? window.__astraScroll.hero : 0;
+  function applyScroll(p) {
     if (heroWrap && W) {
       var z = 1 + 2.3 * ss(0, 0.75, p);
       var damp = 1 - p;
@@ -230,9 +279,9 @@
     }
     if (cosWrap && W) {
       var diag = Math.hypot(W, H);
-      var r = ss(0.6, 0.94, p) * diag * 1.15;
+      var r = ss(0.55, 0.92, p) * diag * 1.15;
       var cp = 'circle(' + r.toFixed(0) + 'px at ' + geo.bx.toFixed(0) + 'px ' + geo.by.toFixed(0) + 'px)';
-      cosWrap.style.opacity = p > 0.55 ? '1' : '0';
+      cosWrap.style.opacity = p > 0.5 ? '1' : '0';
       cosWrap.style.clipPath = cp;
       cosWrap.style.webkitClipPath = cp;
       cosWrap.style.zIndex = p > 0.97 ? '0' : '3';
@@ -245,11 +294,12 @@
     raf = requestAnimationFrame(loop);
     if (document.hidden) return;
     var t = ts / 1000;
+    var p = (window.__astraScroll && typeof window.__astraScroll.hero === 'number') ? window.__astraScroll.hero : 0;
     mouse.x += (mouse.tx - mouse.x) * 0.06;
     mouse.y += (mouse.ty - mouse.y) * 0.06;
-    try { if (heroOn) drawHero(t); } catch (e) {}
+    try { if (heroOn) drawHero(t, p); } catch (e) {}
     try { if (cosOn) drawCos(t); } catch (e) {}
-    applyScroll();
+    applyScroll(p);
   }
 
   function startLoop() {
@@ -259,7 +309,7 @@
 
   function reducedStatic() {
     sizeAll();
-    if (heroOn) drawHero(0);
+    if (heroOn) drawHero(0, 0);
     if (cosOn) drawCos(0);
     if (cosWrap && cosOn) {
       cosWrap.style.opacity = '1';
@@ -291,24 +341,29 @@
     html.classList.add('has-photo-hero');
     initHero();
     sizeAll();
+    if (window.console) console.info('[Astra] hero-фото OK (' + (url.indexOf('assets') === 0 ? 'assets' : 'CDN') + ') | шар px: ' + Math.round(geo.bx) + ',' + Math.round(geo.by) + ' R=' + Math.round(geo.R));
     if (REDUCED) { reducedStatic(); } else { startLoop(); }
+  }, function () {
+    if (window.console) console.info('[Astra] hero-фото недоступно — включается резервная 3D-сцена');
   });
 
   loadFirst(COSMOS_URLS, function (url, im) {
     if (!cosWrap || !cosImg || !cosFx) return;
     cosImg.src = url;
+    cosImgLoaded = true;
     cosOn = true;
     html.classList.add('has-cosmos-photo');
     initCos();
     sizeAll();
+    if (window.console) console.info('[Astra] космос: изображение (' + (url.indexOf('assets') === 0 ? 'assets' : 'CDN') + ')');
     if (REDUCED) { reducedStatic(); } else { startLoop(); }
   }, function () {
-    /* космос-фото не загрузилось — оставляем анимированные звёзды на тёмном фоне */
     if (!cosWrap || !cosFx) return;
     cosOn = true;
     html.classList.add('has-cosmos-photo');
     initCos();
     sizeAll();
+    if (window.console) console.info('[Astra] космос: изображение недоступно — процедурный фон');
     if (REDUCED) { reducedStatic(); } else { startLoop(); }
   });
 })();

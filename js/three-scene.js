@@ -1,6 +1,6 @@
 /* Anna Astra — резервная 3D-сцена (three.js r128).
    Стартует ТОЛЬКО если за 2.4 с не загрузилось ни видео (hero.mp4),
-   ни фото (hero.jpg|png) — чтобы не мигать старой сценой при загрузке. */
+   ни фото (hero.jpg|png) — чтобы не мигать при загрузке. */
 (function () {
   'use strict';
   var canvas = document.getElementById('sky');
@@ -338,6 +338,7 @@
     roomMats.push({ mat: backdropImg.material, base: 0.96 });
 
     applyLayout();
+    if (window.console) console.info('[Astra] режим: 3D (фото/видео не найдены за 2.4 с)');
   }
 
   function applyLayout() {
@@ -443,7 +444,6 @@
       renderer.render(scene, camera);
       window.addEventListener('resize', function () { applyLayout(); renderer.render(scene, camera); });
     } else {
-      /* ждём решения о режиме: фото/видео успевают загрузиться — 3D не мигает */
       setTimeout(function () {
         if (sceneSuperseded()) return;
         try {
@@ -451,7 +451,7 @@
           animate();
         } catch (err) {
           canvas.style.display = 'none';
-          if (window.console) console.warn('[Anna Astra] 3D-сцена недоступна:', err);
+          if (window.console) console.warn('[Astra] 3D-сцена недоступна:', err);
         }
       }, 2400);
     }
