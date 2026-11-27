@@ -1,7 +1,6 @@
 /* Anna Astra — резервная 3D-сцена (three.js r128).
-   Используется только если нет ни assets/hero.mp4 (видео-режим, main.js),
-   ни assets/hero.jpg|png (фото-режим, living-scene.js) —
-   оба отключают canvas классами html.has-hero-video / html.has-photo-hero. */
+   Стартует ТОЛЬКО если за 2.4 с не загрузилось ни видео (hero.mp4),
+   ни фото (hero.jpg|png) — чтобы не мигать старой сценой при загрузке. */
 (function () {
   'use strict';
   var canvas = document.getElementById('sky');
@@ -420,7 +419,7 @@
     renderer.render(scene, camera);
   }
 
-  window.addEventListener('resize', applyLayout);
+  window.addEventListener('resize', function () { if (renderer) applyLayout(); });
 
   if (FINE && !REDUCED) {
     window.addEventListener('pointermove', function (e) {
@@ -432,19 +431,29 @@
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) {
       if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-    } else if (!rafId && !REDUCED && !sceneSuperseded()) {
+    } else if (!rafId && !REDUCED && !sceneSuperseded() && scene) {
       clock.getDelta();
       animate();
     }
   });
 
   try {
-    init();
     if (REDUCED) {
+      init();
       renderer.render(scene, camera);
       window.addEventListener('resize', function () { applyLayout(); renderer.render(scene, camera); });
     } else {
-      animate();
+      /* ждём решения о режиме: фото/видео успевают загрузиться — 3D не мигает */
+      setTimeout(function () {
+        if (sceneSuperseded()) return;
+        try {
+          init();
+          animate();
+        } catch (err) {
+          canvas.style.display = 'none';
+          if (window.console) console.warn('[Anna Astra] 3D-сцена недоступна:', err);
+        }
+      }, 2400);
     }
   } catch (err) {
     canvas.style.display = 'none';

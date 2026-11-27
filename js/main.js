@@ -82,7 +82,7 @@
 
   /* ---------- Медиа: видео сцены (assets/hero.mp4) и космос (assets/cosmos.mp4) ---------- */
   var heroVideo = qs('#heroVideo');
-  var heroWrap = qs('.hero-video-wrap');
+  var heroWrapVideo = qs('.hero-video-wrap');
   var heroVideoOK = false;
   if (heroVideo) {
     heroVideo.addEventListener('canplay', function () {
@@ -104,6 +104,17 @@
     video.load();
   }
 
+  /* Точка шара для видео-режима: cover-математика для источника 16:9 */
+  function videoBallPoint() {
+    var b = window.__astraBall;
+    if (b) return { x: b.cx, y: b.cy };
+    var iw = 1920, ih = 1080;
+    var W = window.innerWidth, H = window.innerHeight;
+    var s = Math.max(W / iw, H / ih);
+    var dw = iw * s, dh = ih * s;
+    return { x: (W - dw) / 2 + 0.5 * dw, y: (H - dh) / 2 + 0.46 * dh };
+  }
+
   function updateVideo3D(p) {
     if (!video || !videoOK) return;
     var o = Math.max(0, Math.min(1, (p - 0.88) / 0.12));
@@ -112,15 +123,18 @@
   }
 
   function updateVideoHero(p) {
-    if (heroWrap) {
-      var z = 1 + 1.9 * ss(0, 0.72, p);
-      heroWrap.style.transform = 'scale(' + z.toFixed(4) + ')';
-      heroWrap.style.filter = 'brightness(' + (1 - 0.35 * ss(0.3, 0.9, p)).toFixed(3) + ')';
+    var b = videoBallPoint();
+    if (heroWrapVideo) {
+      heroWrapVideo.style.transformOrigin = b.x.toFixed(0) + 'px ' + b.y.toFixed(0) + 'px';
+      var z = 1 + 2.3 * ss(0, 0.75, p);
+      heroWrapVideo.style.transform = 'scale(' + z.toFixed(4) + ')';
+      heroWrapVideo.style.filter = 'brightness(' + (1 - 0.45 * ss(0.35, 0.85, p)).toFixed(3) + ')';
     }
     if (video && videoOK) {
-      var r = 150 * ss(0.5, 0.92, p);
-      var cp = 'circle(' + r.toFixed(1) + '% at 50% 46%)';
-      video.style.opacity = r > 0.5 ? '1' : '0';
+      var diag = Math.hypot(window.innerWidth, window.innerHeight);
+      var r = ss(0.6, 0.94, p) * diag * 1.15;
+      var cp = 'circle(' + r.toFixed(0) + 'px at ' + b.x.toFixed(0) + 'px ' + b.y.toFixed(0) + 'px)';
+      video.style.opacity = p > 0.55 ? '1' : '0';
       video.style.clipPath = cp;
       video.style.webkitClipPath = cp;
       video.style.zIndex = p > 0.97 ? '0' : '3';
@@ -148,7 +162,7 @@
           heroUI.style.transform = 'translateY(' + (-p * 90) + 'px)';
         }
         if (hint) hint.style.opacity = String(Math.max(0, 1 - p / 0.1));
-        if (dim) dim.style.opacity = String(ss(0.78, 1, p) * 0.85);
+        if (dim && !heroVideoOK) dim.style.opacity = String(ss(0.78, 1, p) * 0.85);
         if (heroVideoOK) updateVideoHero(p); else updateVideo3D(p);
       }
     });

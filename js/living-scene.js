@@ -1,23 +1,21 @@
 /* Anna Astra — «живые фото»: анимация сгенерированных изображений.
 
+   Геометрия: позиция шара считается в ПИКСЕЛЯХ ОКНА через cover-математику
+   (учитывает обрезку object-fit: cover) — наезд, маска и эффекты всегда
+   точно на шаре при любом соотношении сторон окна.
+
    Приоритет источников:
-     1. assets/hero.jpg | hero.png и assets/cosmos.jpg | cosmos.png (локальные)
-     2. временные CDN-ссылки на сгенерированные кадры (ниже) —
-        чтобы сайт работал сразу, без загрузки файлов в репо.
+     1. assets/hero.jpg | hero.png и assets/cosmos.jpg | cosmos.png
+     2. временные CDN-ссылки на сгенерированные кадры
+   Если есть assets/hero.mp4 — видео-режим (main.js). 3D — последний резерв
+   и стартует только если фото не загрузилось за 2.4 с (без вспышки).
 
-   hero: туманность в шаре дышит и медленно вращается, звёзды мерцают,
-     свеча пульсирует, туман ползёт, пылинки дрейфуют; скролл — наезд к шару
-     (origin = центр шара) и круговая маска-пролёт в космос.
-   cosmos: Ken Burns + мерцающие звёзды.
-
-   Если есть assets/hero.mp4 — работает видео-режим (main.js), этот файл
-   отключается классом html.has-hero-video. 3D-сцена — последний резерв.
-
-   НАСТРОЙКА ПОД КАДР: константы BALL и CANDLE ниже (доли кадра). */
+   НАСТРОЙКА ПОД КАДР: константы BALL и CANDLE ниже. */
 (function () {
   'use strict';
   var html = document.documentElement;
   var REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var FINE = window.matchMedia('(pointer: fine)').matches;
 
   function ss(a, b, x) {
     x = (x - a) / (b - a);
@@ -25,15 +23,14 @@
     return x * x * (3 - 2 * x);
   }
 
-  /* ==== ПОДГОНКА ПОД КАДР ==== */
-  var BALL = { x: 0.503, y: 0.345, r: 0.26 }; // центр шара (x — доля ширины, y — доля высоты), r — доля высоты
+  /* ==== ПОДГОНКА ПОД КАДР (доли ИСХОДНОГО изображения) ==== */
+  var BALL = { x: 0.503, y: 0.345, r: 0.26 }; // x — доля ширины кадра, y и r — доли высоты кадра
   var CANDLE = { x: 0.025, y: 0.21 };          // пламя свечи
 
   /* ==== ИСТОЧНИКИ ==== */
   var HERO_URLS = [
     'assets/hero.jpg',
     'assets/hero.png',
-    /* временный CDN-источник (кадр из чата); локальный файл в assets/ приоритетнее */
     'https://z-cdn-media.chatglm.cn/files/7df0d152-e8c5-4b5f-b5c8-237abe7d8823.png?auth_key=1895760340-c767c8f537124e588073c175f8a3ccba-0-8bf4cbbfba3434c98bf46d82dac7d703'
   ];
   var COSMOS_URLS = [
@@ -42,13 +39,13 @@
     'https://z-cdn-media.chatglm.cn/files/0f212d37-0031-4b10-810e-f93ec29b0020.png?auth_key=1895760340-bea60c1de9154435bfd84ab60f4c4360-0-752013c124285942d0a271637755c628'
   ];
 
-  function loadFirst(urls, ok) {
+  function loadFirst(urls, ok, fail) {
     var i = 0;
     (function next() {
-      if (i >= urls.length) return;
+      if (i >= urls.length) { if (fail) fail(); return; }
       var u = urls[i++];
       var im = new Image();
-      im.onload = function () { ok(u); };
+      im.onload = function () { ok(u, im); };
       im.onerror = next;
       im.src = u;
     })();
@@ -67,7 +64,21 @@
 
   var heroOn = false, cosOn = false, raf = null;
   var fx = null, cfx = null, W = 0, H = 0, CW = 0, CH = 0;
+  var imgW = 1920, imgH = 1080;
+  var geo = { bx: 0, by: 0, R: 0 };
+  var mouse = { x: 0, y: 0, tx: 0, ty: 0 };
   var ballStars = [], motes = [], fogs = [], skyStars = [];
+
+  /* Центр шара в пикселях окна с учётом cover-обрезки */
+  function computeGeo() {
+    var s = Math.max(W / imgW, H / imgH);
+    var dw = imgW * s, dh = imgH * s;
+    var ox = (W - dw) / 2, oy = (H - dh) / 2;
+    geo.bx = ox + BALL.x * dw;
+    geo.by = oy + BALL.y * dh;
+    geo.R = BALL.r * dh;
+    window.__astraBall = { cx: geo.bx, cy: geo.by, R: geo.R };
+  }
 
   function sizeAll() {
     var DPR = Math.min(window.devicePixelRatio || 1, 2);
@@ -76,6 +87,8 @@
       heroFx.width = W * DPR; heroFx.height = H * DPR;
       fx = heroFx.getContext('2d');
       fx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      computeGeo();
+      heroWrap.style.transformOrigin = geo.bx.toFixed(1) + 'px ' + geo.by.toFixed(1) + 'px';
     }
     if (cosOn && cosFx) {
       CW = window.innerWidth; CH = window.innerHeight;
@@ -88,25 +101,25 @@
   function initHero() {
     var i;
     ballStars = [];
-    for (i = 0; i < 46; i++) {
+    for (i = 0; i < 52; i++) {
       var a = rnd() * Math.PI * 2, rr = Math.sqrt(rnd()) * 0.94;
-      ballStars.push({ u: Math.cos(a) * rr, v: Math.sin(a) * rr, s: 0.7 + rnd() * 1.5, p: rnd() * Math.PI * 2, v2: 0.5 + rnd() * 1.2 });
+      ballStars.push({ u: Math.cos(a) * rr, v: Math.sin(a) * rr, s: 0.8 + rnd() * 1.7, p: rnd() * Math.PI * 2, v2: 0.6 + rnd() * 1.3 });
     }
     motes = [];
-    for (i = 0; i < 14; i++) {
-      motes.push({ x: 0.04 + rnd() * 0.3, off: rnd(), v: 0.008 + rnd() * 0.02, s: 0.8 + rnd() * 1.7, p: rnd() * Math.PI * 2 });
+    for (i = 0; i < 22; i++) {
+      motes.push({ x: 0.04 + rnd() * 0.32, off: rnd(), v: 0.01 + rnd() * 0.022, s: 0.9 + rnd() * 1.8, p: rnd() * Math.PI * 2 });
     }
     fogs = [];
     for (i = 0; i < 3; i++) {
-      fogs.push({ x: 0.12 + i * 0.32 + rnd() * 0.08, y: 0.6 + rnd() * 0.18, w: 0.55 + rnd() * 0.3, h: 0.2 + rnd() * 0.1, o: 0.045 + rnd() * 0.035, sp: 0.05 + rnd() * 0.05, ph: rnd() * Math.PI * 2 });
+      fogs.push({ x: 0.14 + i * 0.3 + rnd() * 0.08, y: 0.58 + rnd() * 0.2, w: 0.6 + rnd() * 0.3, h: 0.22 + rnd() * 0.1, o: 0.07 + rnd() * 0.045, sp: 0.06 + rnd() * 0.06, ph: rnd() * Math.PI * 2 });
     }
   }
 
   function initCos() {
     var i;
     skyStars = [];
-    for (i = 0; i < 110; i++) {
-      skyStars.push({ x: rnd(), y: rnd(), s: 0.5 + rnd() * 1.6, p: rnd() * Math.PI * 2, v2: 0.4 + rnd() * 1.1 });
+    for (i = 0; i < 120; i++) {
+      skyStars.push({ x: rnd(), y: rnd(), s: 0.5 + rnd() * 1.7, p: rnd() * Math.PI * 2, v2: 0.4 + rnd() * 1.2 });
     }
   }
 
@@ -114,26 +127,27 @@
     fx.save();
     fx.beginPath(); fx.arc(cx, cy, R, 0, Math.PI * 2); fx.clip();
     fx.globalCompositeOperation = 'lighter';
+    fx.globalAlpha = 0.72 + 0.28 * Math.sin(t * 0.45); /* дыхание */
     var i, a, g;
     for (i = 0; i < 4; i++) {
-      a = t * 0.07 + i * Math.PI / 2;
-      g = fx.createRadialGradient(cx + Math.cos(a) * R * 0.4, cy + Math.sin(a) * R * 0.4, 0, cx + Math.cos(a) * R * 0.4, cy + Math.sin(a) * R * 0.4, R * 0.85);
-      g.addColorStop(0, 'rgba(150,120,225,0.16)');
-      g.addColorStop(0.6, 'rgba(90,70,165,0.08)');
+      a = t * 0.12 + i * Math.PI / 2;
+      g = fx.createRadialGradient(cx + Math.cos(a) * R * 0.42, cy + Math.sin(a) * R * 0.42, 0, cx + Math.cos(a) * R * 0.42, cy + Math.sin(a) * R * 0.42, R * 0.85);
+      g.addColorStop(0, 'rgba(158,126,232,0.26)');
+      g.addColorStop(0.6, 'rgba(94,72,170,0.13)');
       g.addColorStop(1, 'rgba(60,40,110,0)');
       fx.fillStyle = g;
       fx.fillRect(cx - R, cy - R, R * 2, R * 2);
     }
-    g = fx.createRadialGradient(cx, cy, 0, cx, cy, R * 0.5);
-    g.addColorStop(0, 'rgba(242,214,150,0.16)');
-    g.addColorStop(0.5, 'rgba(160,120,205,0.09)');
+    g = fx.createRadialGradient(cx, cy, 0, cx, cy, R * 0.52);
+    g.addColorStop(0, 'rgba(244,216,152,0.30)');
+    g.addColorStop(0.5, 'rgba(168,126,212,0.14)');
     g.addColorStop(1, 'rgba(0,0,0,0)');
     fx.fillStyle = g;
     fx.fillRect(cx - R, cy - R, R * 2, R * 2);
     for (i = 0; i < ballStars.length; i++) {
       var s = ballStars[i];
-      var tw = 0.3 + 0.7 * Math.abs(Math.sin(t * s.v2 + s.p));
-      fx.fillStyle = 'rgba(255,238,205,' + (0.5 * tw).toFixed(3) + ')';
+      var tw = 0.25 + 0.75 * Math.abs(Math.sin(t * s.v2 + s.p));
+      fx.fillStyle = 'rgba(255,240,210,' + (0.75 * tw).toFixed(3) + ')';
       fx.beginPath();
       fx.arc(cx + s.u * R, cy + s.v * R, s.s, 0, Math.PI * 2);
       fx.fill();
@@ -144,18 +158,17 @@
   function drawHero(t) {
     if (!fx) return;
     fx.clearRect(0, 0, W, H);
-    var cx = BALL.x * W, cy = BALL.y * H, R = BALL.r * H;
-    drawNebula(cx, cy, R, t);
+    drawNebula(geo.bx, geo.by, geo.R, t);
 
     fx.globalCompositeOperation = 'lighter';
 
     /* свеча */
-    var f = 0.75 + 0.25 * Math.sin(t * 11 + 0.6) + 0.12 * Math.sin(t * 23 + 1.7);
-    if (f < 0) f = 0;
-    var gx = CANDLE.x * W, gy = CANDLE.y * H, gr = (0.13 + 0.025 * f) * H;
+    var f = 0.7 + 0.3 * Math.abs(Math.sin(t * 9 + 0.6)) + 0.18 * Math.sin(t * 23 + 1.7);
+    if (f < 0.15) f = 0.15;
+    var gx = CANDLE.x * W, gy = CANDLE.y * H, gr = (0.15 + 0.03 * f) * H;
     var cg = fx.createRadialGradient(gx, gy, 0, gx, gy, gr);
-    cg.addColorStop(0, 'rgba(255,192,110,' + (0.16 * f).toFixed(3) + ')');
-    cg.addColorStop(0.5, 'rgba(255,172,92,' + (0.08 * f).toFixed(3) + ')');
+    cg.addColorStop(0, 'rgba(255,192,110,' + (0.24 * f).toFixed(3) + ')');
+    cg.addColorStop(0.5, 'rgba(255,172,92,' + (0.12 * f).toFixed(3) + ')');
     cg.addColorStop(1, 'rgba(255,172,92,0)');
     fx.fillStyle = cg;
     fx.fillRect(0, 0, W, H);
@@ -163,7 +176,7 @@
     /* туман */
     for (var i = 0; i < fogs.length; i++) {
       var fo = fogs[i];
-      var fxp = (fo.x + Math.sin(t * fo.sp + fo.ph) * 0.06) * W;
+      var fxp = (fo.x + Math.sin(t * fo.sp + fo.ph) * 0.07) * W;
       var fy = fo.y * H;
       var fr = fo.w * W * 0.5;
       var fh = fo.h * H;
@@ -182,13 +195,14 @@
     for (var j = 0; j < motes.length; j++) {
       var m = motes[j];
       var yy = 0.8 - ((t * m.v + m.off) % 0.6);
-      var xx = m.x + Math.sin(t * 0.3 + m.p) * 0.02;
-      fx.fillStyle = 'rgba(255,222,172,' + (0.14 + 0.12 * Math.sin(t * 2 + m.p)).toFixed(3) + ')';
+      var xx = m.x + Math.sin(t * 0.35 + m.p) * 0.025;
+      fx.fillStyle = 'rgba(255,224,176,' + (0.18 + 0.16 * Math.sin(t * 2.2 + m.p)).toFixed(3) + ')';
       fx.beginPath();
       fx.arc(xx * W, yy * H, m.s, 0, Math.PI * 2);
       fx.fill();
     }
     fx.globalCompositeOperation = 'source-over';
+    fx.globalAlpha = 1;
   }
 
   function drawCos(t) {
@@ -197,8 +211,8 @@
     cfx.globalCompositeOperation = 'lighter';
     for (var i = 0; i < skyStars.length; i++) {
       var s = skyStars[i];
-      var tw = 0.25 + 0.75 * Math.abs(Math.sin(t * s.v2 + s.p));
-      cfx.fillStyle = 'rgba(255,244,222,' + (0.4 * tw).toFixed(3) + ')';
+      var tw = 0.2 + 0.8 * Math.abs(Math.sin(t * s.v2 + s.p));
+      cfx.fillStyle = 'rgba(255,246,226,' + (0.55 * tw).toFixed(3) + ')';
       cfx.beginPath();
       cfx.arc(s.x * CW, s.y * CH, s.s, 0, Math.PI * 2);
       cfx.fill();
@@ -208,15 +222,17 @@
 
   function applyScroll() {
     var p = (window.__astraScroll && typeof window.__astraScroll.hero === 'number') ? window.__astraScroll.hero : 0;
-    if (heroWrap) {
-      var z = 1 + 1.7 * ss(0, 0.72, p);
-      heroWrap.style.transform = 'scale(' + z.toFixed(4) + ')';
-      heroWrap.style.filter = 'brightness(' + (1 - 0.32 * ss(0.3, 0.9, p)).toFixed(3) + ')';
+    if (heroWrap && W) {
+      var z = 1 + 2.3 * ss(0, 0.75, p);
+      var damp = 1 - p;
+      heroWrap.style.transform = 'translate(' + (mouse.x * 10 * damp).toFixed(1) + 'px,' + (mouse.y * 6 * damp).toFixed(1) + 'px) scale(' + z.toFixed(4) + ')';
+      heroWrap.style.filter = 'brightness(' + (1 - 0.45 * ss(0.35, 0.85, p)).toFixed(3) + ')';
     }
-    if (cosWrap) {
-      var r = 150 * ss(0.5, 0.92, p);
-      var cp = 'circle(' + r.toFixed(1) + '% at ' + (BALL.x * 100).toFixed(1) + '% ' + (BALL.y * 100).toFixed(1) + '%)';
-      cosWrap.style.opacity = r > 0.5 ? '1' : '0';
+    if (cosWrap && W) {
+      var diag = Math.hypot(W, H);
+      var r = ss(0.6, 0.94, p) * diag * 1.15;
+      var cp = 'circle(' + r.toFixed(0) + 'px at ' + geo.bx.toFixed(0) + 'px ' + geo.by.toFixed(0) + 'px)';
+      cosWrap.style.opacity = p > 0.55 ? '1' : '0';
       cosWrap.style.clipPath = cp;
       cosWrap.style.webkitClipPath = cp;
       cosWrap.style.zIndex = p > 0.97 ? '0' : '3';
@@ -229,8 +245,10 @@
     raf = requestAnimationFrame(loop);
     if (document.hidden) return;
     var t = ts / 1000;
-    if (heroOn) drawHero(t);
-    if (cosOn) drawCos(t);
+    mouse.x += (mouse.tx - mouse.x) * 0.06;
+    mouse.y += (mouse.ty - mouse.y) * 0.06;
+    try { if (heroOn) drawHero(t); } catch (e) {}
+    try { if (cosOn) drawCos(t); } catch (e) {}
     applyScroll();
   }
 
@@ -257,22 +275,36 @@
     if (REDUCED) reducedStatic();
   });
 
-  loadFirst(HERO_URLS, function (url) {
+  if (FINE && !REDUCED) {
+    window.addEventListener('pointermove', function (e) {
+      mouse.tx = (e.clientX / window.innerWidth - 0.5) * 2;
+      mouse.ty = (e.clientY / window.innerHeight - 0.5) * 2;
+    }, { passive: true });
+  }
+
+  loadFirst(HERO_URLS, function (url, im) {
     if (!heroWrap || !heroImg || !heroFx) return;
+    imgW = im.naturalWidth || 1920;
+    imgH = im.naturalHeight || 1080;
     heroImg.src = url;
     heroOn = true;
     html.classList.add('has-photo-hero');
-    var origin = (BALL.x * 100).toFixed(1) + '% ' + (BALL.y * 100).toFixed(1) + '%';
-    heroWrap.style.transformOrigin = origin;
-    heroImg.style.transformOrigin = origin;
     initHero();
     sizeAll();
     if (REDUCED) { reducedStatic(); } else { startLoop(); }
   });
 
-  loadFirst(COSMOS_URLS, function (url) {
+  loadFirst(COSMOS_URLS, function (url, im) {
     if (!cosWrap || !cosImg || !cosFx) return;
     cosImg.src = url;
+    cosOn = true;
+    html.classList.add('has-cosmos-photo');
+    initCos();
+    sizeAll();
+    if (REDUCED) { reducedStatic(); } else { startLoop(); }
+  }, function () {
+    /* космос-фото не загрузилось — оставляем анимированные звёзды на тёмном фоне */
+    if (!cosWrap || !cosFx) return;
     cosOn = true;
     html.classList.add('has-cosmos-photo');
     initCos();
