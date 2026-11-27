@@ -80,7 +80,21 @@
     });
   });
 
-  /* ---------- Видео космоса (опциональный сгенерированный ассет) ---------- */
+  /* ---------- Медиа: видео сцены (assets/hero.mp4) и космос (assets/cosmos.mp4) ---------- */
+  var heroVideo = qs('#heroVideo');
+  var heroWrap = qs('.hero-video-wrap');
+  var heroVideoOK = false;
+  if (heroVideo) {
+    heroVideo.addEventListener('canplay', function () {
+      heroVideoOK = true;
+      html.classList.add('has-hero-video');
+      heroVideo.play().catch(function () {});
+    }, { once: true });
+    heroVideo.addEventListener('error', function () { heroVideoOK = false; }, { once: true });
+    heroVideo.src = 'assets/hero.mp4';
+    heroVideo.load();
+  }
+
   var video = qs('#cosmosVideo');
   var videoOK = false;
   if (video) {
@@ -89,11 +103,29 @@
     video.src = 'assets/cosmos.mp4';
     video.load();
   }
-  function updateVideo(p) {
+
+  function updateVideo3D(p) {
     if (!video || !videoOK) return;
     var o = Math.max(0, Math.min(1, (p - 0.88) / 0.12));
     video.style.opacity = String(o);
     if (o > 0 && video.paused) { video.play().catch(function () {}); }
+  }
+
+  function updateVideoHero(p) {
+    if (heroWrap) {
+      var z = 1 + 1.9 * ss(0, 0.72, p);
+      heroWrap.style.transform = 'scale(' + z.toFixed(4) + ')';
+      heroWrap.style.filter = 'brightness(' + (1 - 0.35 * ss(0.3, 0.9, p)).toFixed(3) + ')';
+    }
+    if (video && videoOK) {
+      var r = 150 * ss(0.5, 0.92, p);
+      var cp = 'circle(' + r.toFixed(1) + '% at 50% 46%)';
+      video.style.opacity = r > 0.5 ? '1' : '0';
+      video.style.clipPath = cp;
+      video.style.webkitClipPath = cp;
+      video.style.zIndex = p > 0.97 ? '0' : '3';
+      if (p > 0.5 && video.paused) { video.play().catch(function () {}); }
+    }
   }
 
   /* ---------- Pinned-погружение: скролл управляет сценой ---------- */
@@ -117,7 +149,7 @@
         }
         if (hint) hint.style.opacity = String(Math.max(0, 1 - p / 0.1));
         if (dim) dim.style.opacity = String(ss(0.78, 1, p) * 0.85);
-        updateVideo(p);
+        if (heroVideoOK) updateVideoHero(p); else updateVideo3D(p);
       }
     });
 

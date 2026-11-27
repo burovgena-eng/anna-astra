@@ -40,6 +40,12 @@ body{
 }
 main{position:relative;z-index:2}
 
+/* ---------- Видео-режим hero ---------- */
+.hero-video-wrap{position:absolute;inset:0;z-index:1;overflow:hidden;display:none;background:#050309;will-change:transform,filter}
+#heroVideo{width:100%;height:100%;object-fit:cover;transform-origin:50% 46%}
+html.has-hero-video #sky{display:none}
+html.has-hero-video .hero-video-wrap{display:block}
+
 /* ---------- Курсор ---------- */
 body.has-cursor,body.has-cursor *{cursor:none!important}
 .cursor-dot{position:fixed;top:0;left:0;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:var(--gold-2);box-shadow:0 0 12px rgba(242,220,168,.85);z-index:80;pointer-events:none;opacity:0;transition:opacity .3s}

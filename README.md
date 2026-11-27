@@ -2,171 +2,147 @@
 
 Люксовый сайт астролога Анны: астрология · таро · руны.
 
-## Концепция: погружение в шар
+## Как работает hero
 
-Скролл — это полёт камеры:
-
-1. **Комната гаданий.** Темнота, стол, стеклянный шар, вокруг карты таро и руны, туман, свечи.
-2. **Приближение.** Камера летит к шару, внутри оживает космос.
-3. **Пролёт сквозь стекло.** Комната растворяется, космос становится фоном сайта.
-
-WebGL (three.js): шейдеры туманностей (fbm), френелевское стекло, процедурные текстуры карт и рун, живой туман. Прогресс жёстко привязан к скроллу (`scrub: true`) — без инерции и задержек.
-
-## Слоты под сгенерированные ассеты
-
-Положите файлы в папку `assets/` — сайт подхватит их автоматически, код менять не нужно:
+Приоритет — **видео-режим**: сайт ищет `assets/hero.mp4` (полностью сгенерированная сцена).
+Если файл есть — видео играет в hero, скролл масштабирует его (наезд к шару, точка увеличения 50% / 46%),
+а `assets/cosmos.mp4` раскрывается круговой маской из центра шара («пролёт внутрь») и остаётся фоном страницы.
+Если видео нет — включается резервная 3D-сцена (three.js).
 
 | Файл | Роль |
 |---|---|
-| `assets/hero-room.jpg` | Фон комнаты (параллакс + медленный наезд) |
-| `assets/cosmos.mp4` | Видео космоса после пролёта (fade на финале dive) |
+| `assets/hero.mp4` | Сцена комнаты с шаром (главный режим) |
+| `assets/cosmos.mp4` | Космос после пролёта |
+| `assets/hero-room.jpg` | Опционально: фон для резервного 3D-режима |
 
-Файлов нет → работают процедурные версии.
+Загрузка: GitHub → Add file → Upload files → папка `assets` → Commit. Код менять не нужно.
 
 ---
 
-## ПРОМПТ-ПАКЕТ (точные промпты под эту сборку)
+# ПРОМПТ-ПАКЕТ для Qwen (Wan)
 
-### ⚠️ Главное правило для `hero-room.jpg`
+## КРИТИЧЕСКИЕ ПРАВИЛА (иначе сломается наезд скроллом)
 
-**В кадре НЕ должно быть шара, карт и рун** — они уже есть в 3D-сцене и будут задваиваться.
-Изображение = только атмосфера: комната, туман, свеча, **пустая** столешница.
-Наш процедурный шар встанет в центр и будет выглядеть «родным» на этом фоне.
+1. **Камера полностью статична.** Никакого наезда, панорамы, тряски. Весь «наезд» делает сайт.
+2. **Шар — точно в центре кадра**: 50% по горизонтали, ~46% по вертикали. Диаметр ~22% высоты кадра.
+3. **Идеальный луп**: 8–10 секунд, первый кадр = последний. Анимация только внутри сцены.
+4. Верхние 25% кадра — тёмные и чистые (там заголовок).
 
-### 1. `hero-room.jpg` — фон комнаты
+## 1. `assets/hero.mp4` — сцена (text-to-video)
 
-**Midjourney (v6+):**
 ```
-cinematic dark background plate, empty antique wooden table in a pitch-black
-victorian seance room, thin mist rolling low across the tabletop, single warm
-candle flame far left casting soft golden light, faint cold violet glow from
-the right, deep black shadows, volumetric haze, heavy bokeh, extremely dark
-and moody, lots of empty negative space in the upper center, photorealistic,
-8k, deep indigo and charcoal palette with warm gold accents
---ar 16:9 --style raw
---no people, hands, face, sphere, crystal ball, tarot cards, runes, stones,
-text, letters, watermark, bright light in center
-```
-
-**Flux / SDXL:**
-```
-Prompt: cinematic dark background plate, empty antique wooden table in a
-pitch-black room, low mist crawling across the tabletop, single warm candle
-flame on the far left, faint violet rim light from the right, deep shadows,
-volumetric fog, heavy bokeh, very dark overall, large empty dark area in
-upper center, photorealistic, deep indigo charcoal palette, warm gold accents
-
-Negative: people, hands, face, sphere, ball, crystal ball, tarot cards,
-runes, stones, text, watermark, logo, bright window, daylight, cluttered,
-oversaturated, high contrast center
-```
-CFG 3.5–5 (Flux), steps 30+, разрешение 1920×1088 или 2048×1152.
-
-**DALL·E 3 / GPT-4o:**
-```
-A very dark cinematic background: an empty antique wooden table in a
-pitch-black Victorian room. Thin mist crawls low across the tabletop. A
-single candle flame far to the left casts warm golden light; a faint cold
-violet glow comes from the right. Deep shadows, volumetric haze, heavy
-bokeh. The upper center of the frame is empty darkness — no objects, no
-light spots. Photorealistic, chiaroscuro, deep indigo and charcoal palette
-with warm gold accents. No people, no hands, no crystal ball, no cards,
-no text.
+Статичный кадр со штатива, камера полностью неподвижна, без наезда, панорамы и тряски.
+Ракурс: уровень камеры чуть выше поверхности стола, объектив 35 мм, малая глубина резкости.
+Кромешно тёмная комната в викторианском стиле.
+Точный состав кадра: в центре кадра (50% ширины, 46% высоты) — большой прозрачный
+стеклянный шар для гаданий диаметром 22% высоты кадра на невысокой тёмно-золотой
+подставке в центре антикварного деревянного стола; внутри шара слабо светится
+фиолетово-золотая туманность с мелкими звёздами. Слева от шара на столе лежат
+две карты таро рубашкой вверх, тёмные с золотым тиснением, одна чуть налегает
+на другую. Справа одна карта прислонена к невысокой стопке, на её лице —
+золотое солнце. На переднем плане слева и справа лежат пять небольших серых
+камней с выгравированными рунами. Верхняя четверть кадра — чистая темнота.
+Анимация, вся медленная и деликатная: тонкий туман ползёт по столешнице
+справа налево со скоростью около 2 см/с; пламя единственной свечи далеко слева
+мягко мерцает с изменением яркости ±10%, тёплый свет плавно колышется; в луче
+света дрейфуют 5–10 пылинок; туманность внутри шара вращается очень медленно —
+один оборот примерно за минуту — и звёзды мягко мерцают с периодом 0,5–1,5 с;
+по стеклу едва заметно скользит отражение свечи.
+Свет: тёплая свеча слева, слабый холодный фиолетовый контровой свет справа,
+глубокие чёрные тени, объёмная дымка. Палитра: глубокий индиго, уголь, тёплое золото.
+Фотореалистичный кинематографичный CGI-рендер, детализация 8k, лёгкое киношное зерно.
+Без людей, рук, текста, логотипов, движения камеры. Бесшовный цикл 10 секунд,
+первый кадр совпадает с последним.
 ```
 
-**Русскоязычные сервисы (Kandinsky / Шедеврум):**
+**EN (если сервис лучше понимает английский):**
 ```
-Кинематографичный очень тёмный фон: пустой антикварный деревянный стол
-в кромешно тёмной комнате викторианской эпохи, низкий туман ползёт по
-столешнице, слева вдали горит единственная свеча с тёплым золотистым
-светом, справа — слабое холодное фиолетовое свечение, глубокие тени,
-объёмная дымка в воздухе, сильное боке, верхний центр кадра — пустая
-темнота без объектов и света, фотореализм, палитра глубокого индиго и
-угля с тёплыми золотыми акцентами. Без людей, рук, шара, сфер, карт,
-рун, камней и текста.
-```
-
-**Спека:** 16:9, 2400×1350 (минимум 1920×1080), JPEG quality 85, до 1 МБ.
-
-### 2. `cosmos.mp4` — космос после пролёта
-
-Рекомендуемый путь — **image-to-video** (лучше контроль лупа и композиции).
-
-**Шаг А — статичный кадр (Midjourney / Flux):**
-```
-deep space nebula, vast dark cosmic void, delicate violet and champagne gold
-gas clouds, sparse tiny stars, dark dust lanes, soft ethereal glow, very
-dark and calm, low contrast, photorealistic astrophotography, 8k
---ar 16:9 --no planets, moon, sun, lens flare, text, bright core, satellite
+Static locked-off tripod shot, camera completely motionless, no zoom, no pan,
+no shake. Camera just above table height, 35mm lens, shallow depth of field.
+Pitch-dark Victorian room. Exact composition: dead center of frame (50% width,
+46% height) a large transparent glass scrying ball, 22% of frame height,
+on a small dark-gold stand in the middle of an antique wooden table; faint
+violet-gold nebula with tiny stars glows inside the ball. Left of the ball two
+tarot cards lie face down, dark with gold embossing, slightly overlapping.
+Right of the ball one card leans against a small stack, golden sun on its face.
+Foreground left and right: five small grey rune stones. Top quarter of frame:
+clean darkness. Animation, all slow and delicate: thin fog creeps right-to-left
+across the tabletop ~2 cm/s; single candle flame far left flickers ±10% brightness,
+warm light sways; 5–10 dust motes drift in the beam; nebula inside the ball rotates
+very slowly, one revolution per minute, stars twinkle with 0.5–1.5 s periods;
+a faint candle reflection glides across the glass. Lighting: warm candle left,
+faint cold violet rim right, deep black shadows, volumetric haze. Palette:
+deep indigo, charcoal, warm gold. Photorealistic cinematic CGI render, 8k detail,
+subtle film grain. No people, hands, text, logos, camera movement. Seamless
+10-second loop, first frame equals last frame.
 ```
 
-**Шаг Б — анимация (Kling / Runway Gen-3 / Luma):**
-```
-Extremely slow, almost imperceptible forward drift through the nebula.
-Gas clouds subtly swirl, stars gently twinkle. Calm, hypnotic, elegant.
-No camera shake, no fast motion, no new objects entering frame.
-Seamless loop.
-```
-Параметры: 1920×1080, 10 секунд, motion strength **low (2–3 из 10)**,
-камера — slow zoom-in 3–5%.
+## 2. Надёжнее: картинка → видео (image-to-video)
 
-**Text-to-video (если без статики):**
+**Шаг А — статичный кадр:**
 ```
-Slow cinematic forward dolly through a dark deep-space nebula, violet and
-champagne gold gas clouds, sparse twinkling stars, very dark, low contrast,
-calm and elegant, no planets, no text, no camera shake, seamless loop, 4k
+Тёмная кинематографичная сцена, вид со штатива чуть выше стола: в центре кадра
+(50% ширины, 46% высоты) большой прозрачный стеклянный шар для гаданий на
+тёмно-золотой подставке в центре антикварного деревянного стола, внутри шара
+фиолетово-золотая туманность со звёздами. Слева две карты таро рубашкой вверх
+с золотым тиснением, справа карта с золотым солнцем прислонена к стопке,
+по переднему краю пять серых камней с рунами. Туман у столешницы, тёплая свеча
+слева, фиолетовый контровой свет справа, глубокие тени, верх кадра — темнота.
+Палитра индиго, уголь, золото. Фотореалистичный CGI-рендер 8k, 16:9.
+Без людей, текста и логотипов.
 ```
 
-**Русский вариант (для Kandinsky Video / Поли):**
+**Шаг Б — оживление (img2video, motion strength 2–3/10):**
 ```
-Очень медленный полёт сквозь тёмную глубокую туманность: нежные фиолетовые
-и золотисто-шампанские газовые облака, редкие мерцающие звёзды, очень
-темно, низкий контраст, спокойно и элегантно, без планет, текста и
-резких движений, бесшовный цикл.
+Оживи сцену деликатно: туман медленно ползёт по столу справа налево, пламя
+свечи мягко мерцает, пылинки дрейфуют в луче света, туманность и звёзды внутри
+шара медленно вращаются и мерцают, по стеклу скользит отражение. Камера
+полностью неподвижна, без зума и панорамы. Бесшовный цикл 10 секунд.
 ```
+EN: "Animate subtly: fog drifts right-to-left across the table, candle flame flickers softly, dust motes drift, nebula and stars inside the ball rotate slowly and twinkle, a reflection glides on the glass. Camera completely static, no zoom, no pan. Seamless 10 s loop."
 
-**Пост-обработка видео:** HandBrake → H.264, CRF 26, 30 fps, без звука,
-Web Optimized (faststart), цель < 8 МБ. Если луп не бесшовный —
-crossfade 0.5 с между последним и первым кадром.
+## 3. `assets/cosmos.mp4` — космос после пролёта
 
-### 3. Как загрузить
+**Картинка:**
+```
+Глубокая тёмная туманность: нежные фиолетовые и золотисто-шампанские газовые
+облака с тёмными пылевыми прожилками, редкие мелкие звёзды, мягкое эфирное
+свечение, очень тёмный тон, низкий контраст, центр кадра чуть темнее краёв.
+Фотореалистичная астрофотография, 16:9. Без планет, солнца, бликов и текста.
+```
+**Оживление (motion 2/10):**
+```
+Почти незаметное медленное приближение 3% за 10 секунд, облака едва клубятся,
+звёзды мягко мерцают. Без движения камеры кроме микро-приближения, без новых
+объектов. Бесшовный цикл 10 секунд.
+```
+EN: "Nearly imperceptible slow zoom-in of 3% over 10 s, clouds barely swirl, stars twinkle softly. No other camera motion, no new objects. Seamless 10 s loop."
 
-GitHub → репозиторий → **Add file → Upload files** → перетащить `assets/`
-(или создать папку и загрузить файлы) → **Commit changes**.
-Через 1–2 минуты сайт сам переключится на сгенерированные медиа.
+## 4. Технические требования к файлам
 
-### 4. Чек-лист проверки сгенерированной картинки
+- **hero.mp4**: 1920×1080, 24–30 fps, H.264, **без звука**, faststart, 8–10 с, луп, до 10 МБ (HandBrake CRF 25)
+- **cosmos.mp4**: 1920×1080, 10 с, луп, H.264 без звука, до 8 МБ (CRF 26)
+- Имена файлов — ровно как выше. Положить в папку `assets/`.
 
-- [ ] Верхний центр — тёмный и чистый (там заголовок и текст)
-- [ ] Нет сфер/шаров, карт, рун, лиц, рук, текста
-- [ ] Средняя яркость низкая — предметы едва угадываются
-- [ ] Туман внизу, у столешницы, а не по всему кадру
-- [ ] Наш 3D-шар в центре выглядит на этом фоне «родным»
+## 5. Чек-лист проверки hero-видео
 
-### 5. Портрет Анны
-
-Только **реальная фотография** — не генерировать. Замена: `<img class="pc-photo"
-src="assets/anna.jpg" alt="Анна">` вместо SVG-эмблемы в секции About.
+- [ ] Камера статична (поставьте на паузу в начале и в конце — ракурс совпадает)
+- [ ] Шар в центре: ~50% / 46%, не прыгает по кадру
+- [ ] Луп: конец переходит в начало без скачка (если нет — crossfade 0.4 с)
+- [ ] Верх кадра тёмный, без ярких пятен
+- [ ] Анимация только в сцене: туман, свеча, пыль, космос в шаре
 
 ---
 
 ## Деплой
 
-**GitHub Pages:** Settings → Pages → Deploy from a branch → `main` / `(root)` → Save.
-Адрес: `https://burovgena-eng.github.io/anna-astra/`
-
-**Vercel:** Import repo → Framework: Other → Deploy (без build).
+**GitHub Pages:** Settings → Pages → Deploy from a branch → `main` / `(root)`.
+**Vercel:** Import repo → Framework: Other → Deploy.
 Локально: `python -m http.server 8000`.
 
 ## Что заменить перед публикацией
 
-- [ ] Контакты: поиск по `anna_astra` и `hello@anna-astra.com` (помечены `<!-- ЗАМЕНИТЕ -->`)
-- [ ] Фото Анны (реальное, см. выше)
-- [ ] Форма: `FORM_ENDPOINT` в `js/main.js` (Formspree: `https://formspree.io/f/XXXXXXXX`)
-- [ ] При желании — сгенерировать медиа по промпт-пакету выше
-
-## Технические заметки
-
-- three.js r128 (UMD), GSAP + ScrollTrigger, Google Fonts (кириллица). Без сборщиков.
-- `prefers-reduced-motion`: один статичный кадр, pinned-полёт отключён.
-- Рендер-пауза при скрытой вкладке; DPR ≤ 1.75; на мобильных сцена упрощена.
+- [ ] Контакты (`anna_astra`, `hello@anna-astra.com` — помечены `<!-- ЗАМЕНИТЕ -->`)
+- [ ] Фото Анны — реальное: `<img class="pc-photo" src="assets/anna.jpg">` вместо эмблемы
+- [ ] `FORM_ENDPOINT` в `js/main.js` (Formspree)
+- [ ] Сгенерировать `hero.mp4` и `cosmos.mp4` по промптам выше

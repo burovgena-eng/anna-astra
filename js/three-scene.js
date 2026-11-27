@@ -1,11 +1,6 @@
-/* Anna Astra — «Погружение»: процедурная WebGL-сцена (three.js r128)
-   Комната гаданий → стеклянный шар с космосом внутри → пролёт сквозь стекло →
-   космос как фон страницы. Прогрессом управляет ScrollTrigger (js/main.js)
-   через window.__astraScroll.hero (0..1).
-
-   Опциональные сгенерированные ассеты (подхватываются автоматически):
-     assets/hero-room.jpg — фон комнаты (параллакс + медленный наезд)
-     assets/cosmos.mp4    — видео космоса после пролёта (подключается в main.js) */
+/* Anna Astra — резервная 3D-сцена (three.js r128).
+   Используется ТОЛЬКО если нет assets/hero.mp4 (видео-режим в main.js
+   сам отключает canvas классом html.has-hero-video). */
 (function () {
   'use strict';
   var canvas = document.getElementById('sky');
@@ -27,7 +22,6 @@
     return x * x * (3 - 2 * x);
   }
 
-  /* ---------- Шейдеры ---------- */
   var COSMOS_VERT = [
     'varying vec3 vDir;',
     'void main() {',
@@ -84,7 +78,6 @@
     '}'
   ].join('\n');
 
-  /* ---------- Текстуры (canvas) ---------- */
   function radialTexture(inner, outer, size) {
     var S = size || 256;
     var c = document.createElement('canvas'); c.width = c.height = S;
@@ -94,6 +87,17 @@
     g.addColorStop(1, outer);
     x.fillStyle = g;
     x.fillRect(0, 0, S, S);
+    return new THREE.CanvasTexture(c);
+  }
+
+  function makeBackdropTexture() {
+    var c = document.createElement('canvas'); c.width = 1024; c.height = 576;
+    var x = c.getContext('2d');
+    var g = x.createRadialGradient(512, 240, 60, 512, 288, 640);
+    g.addColorStop(0, '#1b1433');
+    g.addColorStop(0.55, '#0e0a1d');
+    g.addColorStop(1, '#06040d');
+    x.fillStyle = g; x.fillRect(0, 0, 1024, 576);
     return new THREE.CanvasTexture(c);
   }
 
@@ -107,20 +111,12 @@
     x.fillStyle = vg; x.fillRect(0, 0, w, h);
     x.strokeStyle = '#C9A96A'; x.lineWidth = 3; x.strokeRect(20, 20, w - 40, h - 40);
     x.strokeStyle = 'rgba(201,169,106,.55)'; x.lineWidth = 1.5; x.strokeRect(34, 34, w - 68, h - 68);
-    x.strokeStyle = '#E9CF9C'; x.lineWidth = 2;
-    [[20, 20, 1, 1], [w - 20, 20, -1, 1], [20, h - 20, 1, -1], [w - 20, h - 20, -1, -1]].forEach(function (k) {
-      x.beginPath();
-      x.moveTo(k[0] + 34 * k[2], k[1]); x.lineTo(k[0], k[1]); x.lineTo(k[0], k[1] + 34 * k[3]);
-      x.stroke();
-    });
     x.strokeStyle = 'rgba(233,207,156,.8)'; x.lineWidth = 2;
     x.beginPath(); x.arc(w / 2, h / 2 - 20, 120, 0, Math.PI * 2); x.stroke();
-    x.beginPath(); x.arc(w / 2, h / 2 - 20, 104, 0, Math.PI * 2); x.stroke();
     x.save(); x.translate(w / 2, h / 2 - 20);
     x.strokeStyle = '#F2DCA8'; x.fillStyle = '#F2DCA8'; x.lineWidth = 4;
     if (idx === 0) {
-      x.beginPath();
-      x.arc(0, 0, 64, -Math.PI / 2, Math.PI / 2, false);
+      x.beginPath(); x.arc(0, 0, 64, -Math.PI / 2, Math.PI / 2, false);
       x.arc(-26, 0, 64, Math.PI / 2, -Math.PI / 2, true);
       x.closePath(); x.fill();
     } else if (idx === 1) {
@@ -145,10 +141,6 @@
     x.font = '500 58px "Cormorant Garamond", Georgia, serif';
     x.textAlign = 'center'; x.textBaseline = 'middle';
     x.fillText(['I', 'II', 'III', 'IV'][idx], w / 2, h - 86);
-    for (var s = 0; s < 60; s++) {
-      x.fillStyle = 'rgba(233,207,156,' + (Math.random() * 0.05) + ')';
-      x.fillRect(Math.random() * w, Math.random() * h, 1.6, 1.6);
-    }
     var t = new THREE.CanvasTexture(c); t.anisotropy = 4;
     return t;
   }
@@ -165,7 +157,6 @@
     var S = 256;
     var c = document.createElement('canvas'); c.width = c.height = S;
     var x = c.getContext('2d');
-    x.clearRect(0, 0, S, S);
     var g = x.createRadialGradient(S * 0.4, S * 0.35, 10, S / 2, S / 2, S * 0.52);
     g.addColorStop(0, '#38304a'); g.addColorStop(0.7, '#241e33'); g.addColorStop(1, '#171226');
     x.fillStyle = g;
@@ -176,9 +167,6 @@
     x.quadraticCurveTo(S / 2, S - 8, 44, S - 24);
     x.quadraticCurveTo(12, S / 2, 46, 20);
     x.closePath(); x.fill();
-    x.strokeStyle = 'rgba(0,0,0,.35)'; x.lineWidth = 3;
-    x.beginPath(); x.arc(S * 0.32, S * 0.72, 10, 0, Math.PI * 2); x.stroke();
-    x.beginPath(); x.arc(S * 0.7, S * 0.3, 7, 0, Math.PI * 2); x.stroke();
     x.strokeStyle = '#D9C79B';
     x.lineWidth = 13; x.lineCap = 'round'; x.lineJoin = 'round';
     x.shadowColor = 'rgba(217,199,155,.55)'; x.shadowBlur = 10;
@@ -194,22 +182,6 @@
     return t;
   }
 
-  function makeBackdropTexture() {
-    var c = document.createElement('canvas'); c.width = 1024; c.height = 576;
-    var x = c.getContext('2d');
-    var g = x.createRadialGradient(512, 240, 60, 512, 288, 640);
-    g.addColorStop(0, '#1b1433');
-    g.addColorStop(0.55, '#0e0a1d');
-    g.addColorStop(1, '#06040d');
-    x.fillStyle = g; x.fillRect(0, 0, 1024, 576);
-    var r = x.createLinearGradient(0, 0, 1024, 576);
-    r.addColorStop(0, 'rgba(216,183,118,.05)');
-    r.addColorStop(0.4, 'rgba(216,183,118,0)');
-    x.fillStyle = r; x.fillRect(0, 0, 1024, 576);
-    return new THREE.CanvasTexture(c);
-  }
-
-  /* ---------- Сцена ---------- */
   function init() {
     renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
@@ -232,7 +204,6 @@
     roomGroup = new THREE.Group();
     scene.add(roomGroup);
 
-    /* Фон комнаты: процедурный + слот под сгенерированное изображение */
     var backdropProc = new THREE.Mesh(
       new THREE.PlaneGeometry(17, 9.6),
       new THREE.MeshBasicMaterial({ map: makeBackdropTexture(), transparent: true, opacity: 1 })
@@ -255,9 +226,8 @@
       backdropImg.material.needsUpdate = true;
       backdropImg.material.visible = true;
       backdropProc.visible = false;
-    }, undefined, function () { /* файла нет — остаёмся на процедурном фоне */ });
+    }, undefined, function () {});
 
-    /* Стол */
     var table = new THREE.Mesh(
       new THREE.CylinderGeometry(4.4, 4.6, 0.28, 48),
       new THREE.MeshStandardMaterial({ color: 0x191322, roughness: 0.9, metalness: 0.05, transparent: true })
@@ -273,7 +243,6 @@
     sheen.position.y = -0.849;
     roomGroup.add(sheen);
 
-    /* Шар */
     var stand = new THREE.Mesh(
       new THREE.CylinderGeometry(0.34, 0.44, 0.14, 24),
       new THREE.MeshStandardMaterial({ color: 0x6b5631, metalness: 0.85, roughness: 0.35, transparent: true })
@@ -282,11 +251,7 @@
     roomGroup.add(stand);
 
     cosmosMat = new THREE.ShaderMaterial({
-      uniforms: {
-        uTime: { value: 0 },
-        uOpacity: { value: 0.32 },
-        uVivid: { value: 0.5 }
-      },
+      uniforms: { uTime: { value: 0 }, uOpacity: { value: 0.32 }, uVivid: { value: 0.5 } },
       vertexShader: COSMOS_VERT,
       fragmentShader: COSMOS_FRAG,
       side: THREE.BackSide,
@@ -315,13 +280,8 @@
     roomGroup.add(ballGlow);
     glows.push({ sprite: ballGlow, base: 3.4, op: 0.28, ph: 1.3, flicker: 0 });
 
-    /* Карты таро */
     var cardGeo = new THREE.PlaneGeometry(0.78, 1.3);
-    var cardDefs = [
-      [-1.75, 0.55, 0.5],
-      [1.65, 0.75, -0.35],
-      [1.15, -0.95, 0.9]
-    ];
+    var cardDefs = [[-1.75, 0.55, 0.5], [1.65, 0.75, -0.35], [1.15, -0.95, 0.9]];
     cardDefs.forEach(function (d, i) {
       var m = new THREE.Mesh(cardGeo, new THREE.MeshBasicMaterial({ map: makeCardTexture(i), transparent: true }));
       m.rotation.x = -Math.PI / 2;
@@ -334,15 +294,8 @@
     lean.rotation.set(-0.32, -0.5, 0.06);
     roomGroup.add(lean);
 
-    /* Руны */
     var runeGeo = new THREE.PlaneGeometry(0.42, 0.5);
-    var runeDefs = [
-      [-0.9, 1.15, 0.3, 0],
-      [-2.35, -0.3, -0.8, 1],
-      [2.35, -0.15, 1.2, 2],
-      [0.45, 1.6, -0.4, 3],
-      [-1.35, -1.45, 2.0, 4]
-    ];
+    var runeDefs = [[-0.9, 1.15, 0.3, 0], [-2.35, -0.3, -0.8, 1], [2.35, -0.15, 1.2, 2], [0.45, 1.6, -0.4, 3], [-1.35, -1.45, 2.0, 4]];
     runeDefs.forEach(function (d) {
       var m = new THREE.Mesh(runeGeo, new THREE.MeshBasicMaterial({ map: makeRuneTexture(RUNES[d[3]]), transparent: true }));
       m.rotation.x = -Math.PI / 2;
@@ -351,7 +304,6 @@
       roomGroup.add(m);
     });
 
-    /* Туман */
     var fogTex = radialTexture('rgba(255,255,255,.55)', 'rgba(255,255,255,0)', 256);
     var fogDefs = MOBILE
       ? [[-2, 0.5, -1.2, 0x9a8cc8], [1.8, 0.1, -2, 0xd8b776]]
@@ -367,7 +319,6 @@
       fogPlanes.push({ mesh: m, bx: d[0], op: 0.16, sp: 0.18 + i * 0.07, ph: i * 1.7 });
     });
 
-    /* Свечи */
     var candleGlow = radialTexture('rgba(255,196,120,.85)', 'rgba(255,196,120,0)', 128);
     [[-2.1, 0.85, 0.9, 1.5], [1.75, 0.6, 0.35, 1.1]].forEach(function (d, i) {
       var s = new THREE.Sprite(new THREE.SpriteMaterial({ map: candleGlow, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
@@ -377,7 +328,6 @@
       glows.push({ sprite: s, base: d[3], op: 0.5, ph: i * 2.6, flicker: 1 });
     });
 
-    /* Сбор материалов для fade комнаты */
     roomGroup.traverse(function (o) {
       if (o.isMesh && o.material && !o.userData.skipFade && o !== backdropImg) {
         o.material.transparent = true;
@@ -397,7 +347,6 @@
     camera.updateProjectionMatrix();
   }
 
-  /* ---------- Камера по прогрессу ---------- */
   function camAt(p) {
     var startZ = MOBILE ? 7.4 : 6.5;
     var z, y;
@@ -418,6 +367,7 @@
   }
 
   function animate() {
+    if (document.documentElement.classList.contains('has-hero-video')) { rafId = null; return; }
     rafId = requestAnimationFrame(animate);
     var t = clock.getElapsedTime();
     if (cosmosMat) cosmosMat.uniforms.uTime.value = t;
@@ -476,7 +426,7 @@
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) {
       if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-    } else if (!rafId && !REDUCED) {
+    } else if (!rafId && !REDUCED && !document.documentElement.classList.contains('has-hero-video')) {
       clock.getDelta();
       animate();
     }
