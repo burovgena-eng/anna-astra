@@ -1,6 +1,7 @@
 /* Anna Astra — резервная 3D-сцена (three.js r128).
-   Используется ТОЛЬКО если нет assets/hero.mp4 (видео-режим в main.js
-   сам отключает canvas классом html.has-hero-video). */
+   Используется только если нет ни assets/hero.mp4 (видео-режим, main.js),
+   ни assets/hero.jpg|png (фото-режим, living-scene.js) —
+   оба отключают canvas классами html.has-hero-video / html.has-photo-hero. */
 (function () {
   'use strict';
   var canvas = document.getElementById('sky');
@@ -366,8 +367,13 @@
     return { x: Math.sin(p * Math.PI) * -0.22, y: y, z: z };
   }
 
+  function sceneSuperseded() {
+    return document.documentElement.classList.contains('has-hero-video') ||
+           document.documentElement.classList.contains('has-photo-hero');
+  }
+
   function animate() {
-    if (document.documentElement.classList.contains('has-hero-video')) { rafId = null; return; }
+    if (sceneSuperseded()) { rafId = null; return; }
     rafId = requestAnimationFrame(animate);
     var t = clock.getElapsedTime();
     if (cosmosMat) cosmosMat.uniforms.uTime.value = t;
@@ -426,7 +432,7 @@
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) {
       if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-    } else if (!rafId && !REDUCED && !document.documentElement.classList.contains('has-hero-video')) {
+    } else if (!rafId && !REDUCED && !sceneSuperseded()) {
       clock.getDelta();
       animate();
     }
