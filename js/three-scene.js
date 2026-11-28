@@ -5,6 +5,8 @@
 
    Объёмные объекты: карты с толщиной и золотыми торцами (рубашка с орнаментом),
    огранённые руны-камни, контактные тени, блик на стекле.
+   PBR-модели (астролябия, кварц): Dioramas, CC BY 4.0 — грузятся из
+   assets/models/*.glb (приоритет) или напрямую из репозитория Dioramas.
    Сцена стартует мгновенно, без задержек и чёрных пауз. */
 (function () {
   'use strict';
@@ -244,6 +246,68 @@
     return t;
   }
 
+  /* ==== PBR-модели Dioramas (CC BY 4.0) — локальные assets/models/, затем их репо ==== */
+  var MODELS = [
+    { name: 'astrolabe', local: 'assets/models/astrolabe.glb',
+      remote: 'https://raw.githubusercontent.com/blendi-remade/dioramas/main/public/models/reliquary/astrolabe.glb',
+      pos: [-1.95, -0.85, 0.05], size: 1.15, rotY: 0.55 },
+    { name: 'quartz', local: 'assets/models/quartz.glb',
+      remote: 'https://raw.githubusercontent.com/blendi-remade/dioramas/main/public/models/lithos/quartz.glb',
+      pos: [2.05, -0.85, -0.5], size: 0.9, rotY: -0.4 }
+  ];
+
+  function loadModels() {
+    if (!THREE.GLTFLoader) {
+      if (window.console) console.info('[Astra] GLTFLoader недоступен — PBR-модели пропущены');
+      return;
+    }
+    if (window.MeshoptDecoder && THREE.GLTFLoader.setMeshoptDecoder) {
+      try { THREE.GLTFLoader.setMeshoptDecoder(window.MeshoptDecoder); } catch (e) {}
+    }
+    var loader = new THREE.GLTFLoader();
+
+    function place(gltf, cfg, url) {
+      try {
+        var obj = gltf.scene;
+        obj.rotation.y = cfg.rotY;
+        var box = new THREE.Box3().setFromObject(obj);
+        var h = Math.max(box.max.y - box.min.y, 0.001);
+        obj.scale.setScalar(cfg.size / h);
+        box = new THREE.Box3().setFromObject(obj);
+        var cx = (box.min.x + box.max.x) / 2;
+        var cz = (box.min.z + box.max.z) / 2;
+        obj.position.set(cfg.pos[0] - cx, -0.85 - box.min.y, cfg.pos[2] - cz);
+        roomGroup.add(obj);
+        obj.traverse(function (o) {
+          if (o.isMesh && o.material) {
+            var mats = Array.isArray(o.material) ? o.material : [o.material];
+            mats.forEach(function (mm) {
+              mm.transparent = true;
+              roomMats.push({ mat: mm, base: mm.opacity == null ? 1 : mm.opacity });
+            });
+          }
+        });
+        addShadow(cfg.pos[0], cfg.pos[2], cfg.size * 1.2, 0.45);
+        if (window.console) console.info('[Astra] PBR-модель размещена:', cfg.name, url.indexOf('assets') === 0 ? '(локально)' : '(из репозитория Dioramas)');
+      } catch (e) {
+        if (window.console) console.warn('[Astra] модель не размещена:', cfg.name, e);
+      }
+    }
+
+    function tryUrl(cfg, url, onFail) {
+      loader.load(url, function (gltf) { place(gltf, cfg, url); }, undefined, function () {
+        if (onFail) onFail();
+        else if (window.console) console.info('[Astra] модель недоступна:', cfg.name);
+      });
+    }
+
+    MODELS.forEach(function (cfg) {
+      tryUrl(cfg, cfg.local, function () { tryUrl(cfg, cfg.remote, null); });
+    });
+  }
+
+  var addShadowRef = null;
+
   function init() {
     renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
@@ -306,7 +370,7 @@
     roomGroup.add(sheen);
 
     var shadowTex = radialTexture('rgba(0,0,0,0.6)', 'rgba(0,0,0,0)', 256);
-    function addShadow(x, z, s, op) {
+    addShadowRef = function (x, z, s, op) {
       var m = new THREE.Mesh(
         new THREE.PlaneGeometry(s, s),
         new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, opacity: op, depthWrite: false })
@@ -314,7 +378,8 @@
       m.rotation.x = -Math.PI / 2;
       m.position.set(x, -0.848, z);
       roomGroup.add(m);
-    }
+    };
+    var addShadow = addShadowRef;
     addShadow(0, 0, 3.4, 0.55);
 
     var stand = new THREE.Mesh(
@@ -440,6 +505,7 @@
     roomMats.push({ mat: backdropImg.material, base: 0.96 });
 
     applyLayout();
+    loadModels();
     if (window.console) console.info('[Astra] режим: 3D «Погружение» — сцена активна');
   }
 
