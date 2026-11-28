@@ -5,6 +5,7 @@ import { Engine, studioEnvironment, normalize, prepModel, smooth } from './engin
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const MOBILE = innerWidth < 760;
+window.__astraStatus?.push('✓ three 0.186 загружен');
 
 const COSMOS_VERT = 'varying vec3 vDir; void main(){ vDir = position; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }';
 const COSMOS_FRAG = [
@@ -170,10 +171,12 @@ const MODELS = [
     pos: [-1.95, -0.85, 0.05], size: 1.15, rotY: 0.55 },
   { name: 'quartz', local: 'assets/models/quartz.glb',
     remote: 'https://raw.githubusercontent.com/blendi-remade/dioramas/main/public/models/lithos/quartz.glb',
-    pos: [2.05, -0.85, -0.5], size: 0.9, rotY: -0.4 }
+    pos: [2.05, -0.85, -0.5], size: 0.9, rotY: -0.4 },
+  /* ВАША модель из Meshy: скачайте GLB и загрузите в assets/models/ — задайте pos/size */
 ];
 
 export function createWorld(canvas) {
+  window.__astraStatus?.push('✓ сборка сцены…');
   const engine = new Engine({
     canvas, fov: 45, background: 0x050309, exposure: 1.15,
     post: MOBILE
@@ -190,6 +193,7 @@ export function createWorld(canvas) {
       { pos: [0, 7, 0], size: [6, 2], intensity: 1.5, color: 0xbfb4ff },
     ],
   });
+  window.__astraStatus?.push('✓ PMREM-студийный свет');
   scene.fog = new THREE.FogExp2(0x050309, 0.04);
   camera.position.set(0, 0.55, 6.5);
 
@@ -306,7 +310,7 @@ export function createWorld(canvas) {
     m.castShadow = true; m.receiveShadow = true;
     room.add(m);
   });
-  reg(cardSideMat ? room : room); // зарегистрировать материалы комнаты для fade
+  reg(room); // регистрация всех материалов комнаты для фейда при погружении
 
   const fogTex = radialTexture('rgba(255,255,255,.55)', 'rgba(255,255,255,0)');
   const fogPlanes = [];
@@ -345,9 +349,9 @@ export function createWorld(canvas) {
         prepModel(obj, renderer, { cast: true, receive: true, env: 1 });
         room.add(obj);
         reg(obj);
-        console.info('[Astra] PBR-модель размещена:', cfg.name, url.indexOf('assets') === 0 ? '(локально)' : '(из репозитория Dioramas)');
+        window.__astraStatus?.push('✓ модель: ' + cfg.name + (url.indexOf('assets') === 0 ? ' (локально)' : ' (Dioramas)'));
       } catch (e) { console.warn('[Astra] модель не размещена:', cfg.name, e); }
-    }, undefined, () => { if (onFail) onFail(); else console.info('[Astra] модель недоступна:', cfg.name); });
+    }, undefined, () => { if (onFail) onFail(); else window.__astraStatus?.push('⚠ модель недоступна: ' + cfg.name); });
   }
   function loadModels() {
     MODELS.forEach(cfg => tryModel(cfg, cfg.local, () => tryModel(cfg, cfg.remote, null)));
@@ -421,6 +425,7 @@ export function createWorld(canvas) {
   });
 
   engine.start();
+  window.__astraStatus?.push('✓ сцена собрана и запущена');
   console.info('[Astra] движок Dioramas активен: N8AO + bloom + AgX');
   return { setProgress(p) { P = p; } };
 }

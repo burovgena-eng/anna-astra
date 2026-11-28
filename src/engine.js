@@ -1,18 +1,9 @@
 // Порт render-ядра из Dioramas (github.com/blendi-remade/dioramas), MIT License.
-// Адаптировано для Anna Astra: тот же HDR-пайплайн — N8AO, mip-bloom, AgX, SMAA, зерно, виньетка.
+// Адаптировано для Anna Astra. Пост-стек (N8AO + bloom + AgX + SMAA) грузится
+// асинхронно: до готовности сцена рендерится напрямую — без чёрных пауз.
 import * as THREE from 'three';
-import {
-  EffectComposer, RenderPass, EffectPass, BloomEffect, ToneMappingEffect, ToneMappingMode,
-  SMAAEffect, VignetteEffect, NoiseEffect, BlendFunction,
-} from 'postprocessing';
-import { N8AOPostPass } from 'n8ao';
 
 export { THREE };
-
-const TONE = {
-  agx: ToneMappingMode.AGX, aces: ToneMappingMode.ACES_FILMIC, neutral: ToneMappingMode.NEUTRAL,
-  reinhard: ToneMappingMode.REINHARD2, linear: ToneMappingMode.LINEAR,
-};
 
 export class Engine {
   constructor({
@@ -27,7 +18,7 @@ export class Engine {
     });
     const r = this.renderer;
     r.outputColorSpace = THREE.SRGBColorSpace;
-    r.toneMapping = THREE.NoToneMapping; // тонмаппинг — в пост-стеке (сначала HDR-bloom)
+    r.toneMapping = THREE.NoToneMapping; // тонмаппинг в пост-стеке
     r.shadowMap.enabled = shadows;
     r.shadowMap.type = THREE.PCFShadowMap;
     if (background !== null && !alpha) r.setClearColor(background, 1);
@@ -42,43 +33,66 @@ export class Engine {
     this.paused = false;
     this.exposure = exposure;
     this.running = false;
+    this.post = null;
+    this._postCfg = post;
+    this._postReady = false;
 
-    this.post = post === false ? null : this._buildPost(post);
     this.resize = this.resize.bind(this);
     addEventListener('resize', this.resize);
     this.resize();
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.clock.stop(); else { this.clock.start(); }
     });
+
+    this._initPostAsync();
   }
 
-  _buildPost(p) {
-    const composer = new EffectComposer(this.renderer, { frameBufferType: THREE.HalfFloatType, multisampling: 0 });
-    composer.addPass(new RenderPass(this.scene, this.camera));
-    let ao = null;
-    if (p.ao !== false) {
-      ao = new N8AOPostPass(this.scene, this.camera, 1, 1);
-      Object.assign(ao.configuration, {
-        aoRadius: 1.2, distanceFalloff: 1.0, intensity: 2.2, denoiseSamples: 8, denoiseRadius: 12,
-        aoSamples: 16, halfRes: true, gammaCorrection: false, ...(p.ao ?? {}),
-      });
-      composer.addPass(ao);
+  async _initPostAsync() {
+    const p = this._postCfg;
+    if (p === false) return;
+    try {
+      const pp = await import('postprocessing');
+      let n8 = null;
+      if (p.ao !== false) {
+        try { n8 = await import('n8ao'); } catch (e) {
+          window.__astraStatus?.push('⚠ N8AO недоступен — рендер без AO');
+        }
+      }
+      const composer = new pp.EffectComposer(this.renderer, { frameBufferType: THREE.HalfFloatType, multisampling: 0 });
+      composer.addPass(new pp.RenderPass(this.scene, this.camera));
+      let ao = null;
+      if (n8 && p.ao !== false) {
+        ao = new n8.N8AOPostPass(this.scene, this.camera, 1, 1);
+        Object.assign(ao.configuration, {
+          aoRadius: 1.4, distanceFalloff: 1.1, intensity: 2.4, denoiseSamples: 8, denoiseRadius: 12,
+          aoSamples: 16, halfRes: true, gammaCorrection: false, ...(p.ao ?? {}),
+        });
+        composer.addPass(ao);
+      }
+      const effects = [];
+      if (p.bloom !== false) effects.push(new pp.BloomEffect({
+        intensity: 1.15, luminanceThreshold: 0.72, luminanceSmoothing: 0.3, mipmapBlur: true, radius: 0.7, levels: 8,
+        ...(p.bloom ?? {}),
+      }));
+      const toneKey = String(p.tone ?? 'agx').toUpperCase();
+      effects.push(new pp.ToneMappingEffect({ mode: pp.ToneMappingMode[toneKey] ?? pp.ToneMappingMode.AGX }));
+      if (p.vignette !== false) effects.push(new pp.VignetteEffect({ offset: 0.3, darkness: 0.62, ...(p.vignette ?? {}) }));
+      if (p.noise !== false) {
+        const n = new pp.NoiseEffect({ premultiply: false, blendFunction: pp.BlendFunction.OVERLAY });
+        n.blendMode.opacity.value = p.noise ?? 0.05;
+        effects.push(n);
+      }
+      composer.addPass(new pp.EffectPass(this.camera, ...effects));
+      if (p.smaa !== false) composer.addPass(new pp.EffectPass(this.camera, new pp.SMAAEffect()));
+      composer.setSize(this._w, this._h, false);
+      this.post = { composer, ao };
+      this._postReady = true;
+      window.__astraStatus?.push(ao ? '✓ пост-стек: AO + bloom + AgX + SMAA' : '✓ пост-стек: bloom + AgX (без AO)');
+    } catch (e) {
+      window.__astraStatus?.push('✗ пост-стек недоступен — рендер без эффектов');
+      if (window.console) console.warn('[Astra] пост-стек:', e);
     }
-    const effects = [];
-    const bloom = p.bloom === false ? null : new BloomEffect({
-      intensity: 0.9, luminanceThreshold: 0.85, luminanceSmoothing: 0.3, mipmapBlur: true, radius: 0.72, levels: 8,
-      ...(p.bloom ?? {}),
-    });
-    if (bloom) effects.push(bloom);
-    const tone = new ToneMappingEffect({ mode: TONE[p.tone ?? 'agx'] });
-    effects.push(tone);
-    const vignette = p.vignette === false ? null : new VignetteEffect({ offset: 0.3, darkness: 0.62, ...(p.vignette ?? {}) });
-    if (vignette) effects.push(vignette);
-    const noise = p.noise === false ? null : new NoiseEffect({ premultiply: false, blendFunction: BlendFunction.OVERLAY });
-    if (noise) { noise.blendMode.opacity.value = p.noise ?? 0.06; effects.push(noise); }
-    composer.addPass(new EffectPass(this.camera, ...effects));
-    if (p.smaa !== false) composer.addPass(new EffectPass(this.camera, new SMAAEffect()));
-    return { composer, ao, bloom, tone, vignette, noise };
+    this.resize();
   }
 
   get size() { return { w: this._w, h: this._h, dpr: this._dpr }; }
@@ -92,11 +106,11 @@ export class Engine {
     this.renderer.setSize(this._w, this._h, false);
     this.camera.aspect = this._w / this._h;
     this.camera.updateProjectionMatrix();
-    if (this.post) this.post.composer.setSize(this._w, this._h, false);
+    if (this.post && this._postReady) this.post.composer.setSize(this._w, this._h, false);
     for (const f of this.resizers) f(this._w, this._h, this._dpr);
   }
 
-  onTick(fn) { this.ticks.push(fn); return () => { this.ticks = this.ticks.filter(f => f !== fn); }; }
+  onTick(fn) { this.ticks.push(fn); }
   onAfterRender(fn) { this.afters.push(fn); }
   onResize(fn) { this.resizers.push(fn); fn(this._w, this._h, this._dpr); }
 
@@ -113,18 +127,21 @@ export class Engine {
       if (this.paused) return;
       this.render(dt);
       for (const f of this.afters) f(dt, this.time);
+      this._frames = (this._frames || 0) + 1;
+      const now = performance.now();
+      if (now - (this._fpsT || now) > 1000) { window.__fps = Math.round(this._frames * 1000 / (now - this._fpsT)); this._frames = 0; this._fpsT = now; }
     };
     this.clock.start();
     requestAnimationFrame(loop);
   }
 
   render(dt) {
-    if (this.post) this.post.composer.render(dt);
+    if (this.post && this._postReady) this.post.composer.render(dt);
     else this.renderer.render(this.scene, this.camera);
   }
 }
 
-/** Студийное окружение, запечённое в PMREM: тёмный купол + мягкие панели-софтбоксы. */
+/** Студийное окружение (PMREM): тёмный купол + мягкие панели-софтбоксы. */
 export function studioEnvironment(renderer, {
   top = 0x1a1a1f, bottom = 0x050506, panels = [], blur = 0.04,
 } = {}) {
@@ -167,8 +184,8 @@ export function normalize(obj, size = 2, { ground = true, axis = 'max' } = {}) {
   return obj;
 }
 
-/** Подготовка модели: тени, анизотропия, интенсивность окружения. */
-export function prepModel(obj, renderer, { cast = true, receive = true, env = 1, rough = null, metal = null } = {}) {
+/** Подготовка модели: тени, анизотропия, окружение. */
+export function prepModel(obj, renderer, { cast = true, receive = true, env = 1 } = {}) {
   const aniso = renderer.capabilities.getMaxAnisotropy();
   obj.traverse(o => {
     if (!o.isMesh) return;
@@ -177,8 +194,6 @@ export function prepModel(obj, renderer, { cast = true, receive = true, env = 1,
     for (const m of mats) {
       for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap']) if (m[k]) m[k].anisotropy = aniso;
       if ('envMapIntensity' in m) m.envMapIntensity = env;
-      if (rough !== null) m.roughness = rough;
-      if (metal !== null) m.metalness = metal;
     }
   });
   return obj;

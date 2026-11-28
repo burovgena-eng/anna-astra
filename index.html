@@ -15,14 +15,13 @@
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500;1,600&family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 <style>
-  /* движок-ветка: скролл-сцена без pin-библиотек */
   .hero{height:auto!important}
   .hero-ui{position:sticky;top:0;height:100vh;height:100svh;will-change:opacity,transform}
   .scroll-hint{position:fixed;will-change:opacity}
   #preloader{transition:opacity .6s ease}
   #preloader.done{opacity:0;pointer-events:none}
   .js [data-hero]{opacity:0;transform:translateY(24px);transition:opacity 1s ease,transform 1s ease}
-  .js body.loaded [data-hero],body.loaded [data-hero]{opacity:1;transform:none}
+  body.loaded [data-hero]{opacity:1;transform:none}
   .js [data-reveal]{opacity:0;transform:translateY(26px);transition:opacity .9s ease,transform .9s ease}
   .js [data-reveal].in{opacity:1;transform:none}
   @media (prefers-reduced-motion:reduce){
@@ -41,7 +40,13 @@
 }
 </script>
 </head>
-<body class="">
+<body>
+
+<script>
+/* bootstrap диагностики: работает даже если модули не загрузились */
+window.__astraStatus = window.__astraStatus || [];
+window.__astraStatus.push('… загрузка модулей (three / пост-стек)');
+</script>
 
 <div id="preloader" role="status" aria-live="polite">
   <div class="pre-inner">
@@ -360,7 +365,7 @@
     </div>
     <div class="foot-bottom">
       <span>© <span id="year">2026</span> Anna Astra · астрология · таро · руны</span>
-      <span class="foot-note">Консультации не заменяют медицинскую, клиническую психологическую, юридическую и финансовую помощь.<br>3D-модели и движок: <a href="https://github.com/blendi-remade/dioramas" target="_blank" rel="noopener" style="color:inherit">Dioramas</a> · MIT / CC BY 4.0</span>
+      <span class="foot-note">Консультации не заменяют медицинскую, клиническую психологическую, юридическую и финансовую помощь.<br>3D-движок и модели: <a href="https://github.com/blendi-remade/dioramas" target="_blank" rel="noopener" style="color:inherit">Dioramas</a> · MIT / CC BY 4.0</span>
     </div>
   </div>
 </footer>
@@ -374,6 +379,28 @@
   </div>
 </div>
 
+<script>
+/* диагностический щит: виден прямо на странице, без консоли */
+(function(){
+  var box = document.createElement('div');
+  box.id = 'astra-debug';
+  box.style.cssText = 'position:fixed;left:10px;bottom:10px;z-index:120;font:11px/1.55 ui-monospace,SFMono-Regular,monospace;color:#EFE9DC;background:rgba(5,4,10,.78);border:1px solid rgba(216,183,118,.4);border-radius:10px;padding:10px 12px;max-width:340px;pointer-events:none;backdrop-filter:blur(6px)';
+  document.body.appendChild(box);
+  window.__astraStatus = window.__astraStatus || [];
+  var done = false;
+  function render(){
+    var fps = window.__fps ? (' · ' + window.__fps + ' fps') : '';
+    box.innerHTML = '<b style="color:#D8B776">◈ Anna Astra · диагностика</b>' + fps + '<br>' +
+      (window.__astraStatus.join('<br>') || 'инициализация…');
+  }
+  setInterval(render, 400);
+  setTimeout(function(){
+    var ok = window.__astraStatus.some(function(s){ return s.indexOf('✓') === 0; });
+    if (!ok) window.__astraStatus.push('✗ JS-модуль не загрузился — проверьте сеть/CDN или напишите мне');
+    done = true; render();
+  }, 7000);
+})();
+</script>
 <script type="module" src="src/main.js"></script>
 </body>
 </html>

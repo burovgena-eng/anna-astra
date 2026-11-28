@@ -6,6 +6,7 @@ const qsa = (s, r = document) => Array.from(r.querySelectorAll(s));
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const FINE = matchMedia('(pointer: fine)').matches;
 
+window.__astraStatus?.push('✓ модуль main.js');
 document.documentElement.classList.add('js');
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 scrollTo(0, 0);
@@ -14,8 +15,10 @@ scrollTo(0, 0);
 let world = null;
 try {
   world = createWorld(qs('#sky'));
+  window.__astraStatus?.push('✓ 3D-мир собран');
 } catch (e) {
   console.warn('[Astra] движок не запустился:', e);
+  window.__astraStatus?.push('✗ 3D-мир: ' + (e?.message || e));
 }
 
 /* ---------- Прелоадер ---------- */
