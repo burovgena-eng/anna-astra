@@ -1,27 +1,15 @@
-/* Anna Astra — основная 3D-сцена (three.js r128). СТАРТУЕТ МГНОВЕННО.
+/* Anna Astra — основная 3D-сцена «Погружение» (three.js r128).
 
-   Комната гаданий → шар с живым космосом → пролёт сквозь стекло → космос
-   как фон страницы. Прогресс: window.__astraScroll.hero (ScrollTrigger).
+   Комната гаданий → шар с живым космосом → пролёт сквозь стекло →
+   космос как фон страницы. Прогресс: window.__astraScroll.hero (ScrollTrigger).
 
-   Режимы: если в assets/ появились hero.mp4 (видео) или hero.jpg|png (фото),
-   они перехватывают сцену (классы has-hero-video / has-photo-hero на <html>),
-   а этот цикл сам останавливается. Пока файлов нет — canvas проявляется
-   через класс mode-3d (плавно, без чёрной паузы и без вспышек).
-
-   Объёмные объекты: карты с толщиной и золотыми торцами, огранённые руны,
-   контактные тени, блик на стекле. */
+   Объёмные объекты: карты с толщиной и золотыми торцами (рубашка с орнаментом),
+   огранённые руны-камни, контактные тени, блик на стекле.
+   Сцена стартует мгновенно, без задержек и чёрных пауз. */
 (function () {
   'use strict';
   var canvas = document.getElementById('sky');
   if (!canvas || !window.THREE) { if (canvas) canvas.style.display = 'none'; return; }
-
-  /* стили проявления сцены (один раз) */
-  if (!document.getElementById('astra-mode-style')) {
-    var st = document.createElement('style');
-    st.id = 'astra-mode-style';
-    st.textContent = '#sky{opacity:0;transition:opacity .8s ease}html.mode-3d #sky{opacity:1}';
-    document.head.appendChild(st);
-  }
 
   var REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var FINE = window.matchMedia('(pointer: fine)').matches;
@@ -448,7 +436,7 @@
     roomMats.push({ mat: backdropImg.material, base: 0.96 });
 
     applyLayout();
-    if (window.console) console.info('[Astra] режим: 3D (основная сцена). Апгрейд: assets/hero.mp4 или hero.jpg|png');
+    if (window.console) console.info('[Astra] режим: 3D «Погружение» — сцена активна');
   }
 
   function applyLayout() {
@@ -477,13 +465,7 @@
     return { x: Math.sin(p * Math.PI) * -0.22, y: y, z: z };
   }
 
-  function sceneSuperseded() {
-    return document.documentElement.classList.contains('has-hero-video') ||
-           document.documentElement.classList.contains('has-photo-hero');
-  }
-
   function animate() {
-    if (sceneSuperseded()) { rafId = null; return; }
     rafId = requestAnimationFrame(animate);
     var t = clock.getElapsedTime();
     if (cosmosMat) cosmosMat.uniforms.uTime.value = t;
@@ -542,7 +524,7 @@
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) {
       if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-    } else if (!rafId && !REDUCED && !sceneSuperseded() && scene) {
+    } else if (!rafId && !REDUCED && scene) {
       clock.getDelta();
       animate();
     }
@@ -561,12 +543,4 @@
     canvas.style.display = 'none';
     if (window.console) console.warn('[Astra] 3D-сцена недоступна:', err);
   }
-
-  /* страховка: если фото/видео так и не определились — проявляем 3D */
-  setTimeout(function () {
-    if (!document.documentElement.classList.contains('has-photo-hero') &&
-        !document.documentElement.classList.contains('has-hero-video')) {
-      document.documentElement.classList.add('mode-3d');
-    }
-  }, 3000);
 })();
