@@ -21,6 +21,10 @@
   var fogPlanes = [], glows = [];
   var mouse = { x: 0, y: 0, tx: 0, ty: 0 };
 
+  /* детерминированный генератор случайных чисел (пропорции камней и т.п.) */
+  var seed = 1234567;
+  function rnd() { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }
+
   function ss(a, b, x) {
     x = (x - a) / (b - a);
     x = Math.max(0, Math.min(1, x));
