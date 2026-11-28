@@ -1,4 +1,5 @@
-/* Anna Astra — интерактив: pinned-погружение, курсор, карты, форма */
+/* Anna Astra — интерактив: pinned-погружение, курсор, карты, форма.
+   Чистая 3D-версия: без фото/видео веток. */
 (function () {
   'use strict';
 
@@ -11,6 +12,10 @@
   var FINE = window.matchMedia('(pointer: fine)').matches;
   var HAS_GSAP = !!window.gsap;
   var ANIM = HAS_GSAP && !REDUCED;
+
+  /* страница всегда стартует сверху */
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  window.scrollTo(0, 0);
 
   html.classList.add(ANIM ? 'js-anim' : 'no-anim');
   if (ANIM && window.ScrollTrigger) gsap.registerPlugin(ScrollTrigger);
@@ -80,70 +85,6 @@
     });
   });
 
-  /* ---------- Медиа: видео сцены (assets/hero.mp4) и космос (assets/cosmos.mp4) ---------- */
-  var heroVideo = qs('#heroVideo');
-  var heroWrapVideo = qs('.hero-video-wrap');
-  var heroVideoOK = false;
-  if (heroVideo) {
-    heroVideo.addEventListener('canplay', function () {
-      heroVideoOK = true;
-      html.classList.add('has-hero-video');
-      heroVideo.play().catch(function () {});
-    }, { once: true });
-    heroVideo.addEventListener('error', function () {
-      heroVideoOK = false;
-      html.classList.add('mode-3d');
-    }, { once: true });
-    heroVideo.src = 'assets/hero.mp4';
-    heroVideo.load();
-  }
-
-  var video = qs('#cosmosVideo');
-  var videoOK = false;
-  if (video) {
-    video.addEventListener('canplay', function () { videoOK = true; }, { once: true });
-    video.addEventListener('error', function () { videoOK = false; video.style.display = 'none'; }, { once: true });
-    video.src = 'assets/cosmos.mp4';
-    video.load();
-  }
-
-  function videoBallPoint() {
-    var b = window.__astraBall;
-    if (b) return { x: b.cx, y: b.cy };
-    var iw = 1920, ih = 1080;
-    var W = window.innerWidth, H = window.innerHeight;
-    var s = Math.max(W / iw, H / ih);
-    var dw = iw * s, dh = ih * s;
-    return { x: (W - dw) / 2 + 0.5 * dw, y: (H - dh) / 2 + 0.46 * dh };
-  }
-
-  function updateVideo3D(p) {
-    if (!video || !videoOK) return;
-    var o = Math.max(0, Math.min(1, (p - 0.88) / 0.12));
-    video.style.opacity = String(o);
-    if (o > 0 && video.paused) { video.play().catch(function () {}); }
-  }
-
-  function updateVideoHero(p) {
-    var b = videoBallPoint();
-    if (heroWrapVideo) {
-      heroWrapVideo.style.transformOrigin = b.x.toFixed(0) + 'px ' + b.y.toFixed(0) + 'px';
-      var z = 1 + 2.3 * ss(0, 0.75, p);
-      heroWrapVideo.style.transform = 'scale(' + z.toFixed(4) + ')';
-      heroWrapVideo.style.filter = 'brightness(' + (1 - 0.45 * ss(0.35, 0.85, p)).toFixed(3) + ')';
-    }
-    if (video && videoOK) {
-      var diag = Math.hypot(window.innerWidth, window.innerHeight);
-      var r = ss(0.6, 0.94, p) * diag * 1.15;
-      var cp = 'circle(' + r.toFixed(0) + 'px at ' + b.x.toFixed(0) + 'px ' + b.y.toFixed(0) + 'px)';
-      video.style.opacity = p > 0.55 ? '1' : '0';
-      video.style.clipPath = cp;
-      video.style.webkitClipPath = cp;
-      video.style.zIndex = p > 0.97 ? '0' : '3';
-      if (p > 0.5 && video.paused) { video.play().catch(function () {}); }
-    }
-  }
-
   /* ---------- Pinned-погружение ---------- */
   var heroUI = qs('.hero-ui');
   var hint = qs('.scroll-hint');
@@ -164,8 +105,7 @@
           heroUI.style.transform = 'translateY(' + (-p * 90) + 'px)';
         }
         if (hint) hint.style.opacity = String(Math.max(0, 1 - p / 0.1));
-        if (dim && !heroVideoOK) dim.style.opacity = String(ss(0.78, 1, p) * 0.85);
-        if (heroVideoOK) updateVideoHero(p); else updateVideo3D(p);
+        if (dim) dim.style.opacity = String(ss(0.78, 1, p) * 0.55);
       }
     });
 

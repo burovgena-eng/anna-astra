@@ -31,8 +31,6 @@
 </div>
 
 <canvas id="sky" aria-hidden="true"></canvas>
-<video id="cosmosVideo" muted loop playsinline preload="metadata" aria-hidden="true"></video>
-<div class="cosmos-photo-wrap" aria-hidden="true"><img id="cosmosPhoto" alt=""><canvas id="cosmoFx"></canvas></div>
 <div class="page-dim" aria-hidden="true"></div>
 <div class="vignette" aria-hidden="true"></div>
 <div class="grain" aria-hidden="true"></div>
@@ -69,10 +67,8 @@
 </div>
 
 <main>
-  <!-- HERO: приоритет — видео assets/hero.mp4, затем «живое фото», затем 3D -->
+  <!-- HERO: 3D-погружение -->
   <section id="hero" class="hero">
-    <div class="hero-video-wrap" aria-hidden="true"><video id="heroVideo" muted loop playsinline preload="auto"></video></div>
-    <div class="hero-photo-wrap" aria-hidden="true"><img id="heroPhoto" alt=""><canvas id="heroFx"></canvas></div>
     <div class="hero-ui container">
       <p class="overline" data-hero>Anna Astra · астрология · таро · руны</p>
       <h1 class="hero-title" data-hero>Загляните внутрь — <em>ответ уже там</em></h1>
@@ -363,7 +359,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" defer></script>
-<script src="js/living-scene.js" defer></script>
 <script src="js/three-scene.js" defer></script>
 <script src="js/main.js" defer></script>
 </body>
